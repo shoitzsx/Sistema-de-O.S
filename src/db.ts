@@ -33,6 +33,24 @@ export function initDb() {
     );
   `);
 
+  // Adicionar colunas se não existirem
+try {
+  db.exec(`ALTER TABLE service_orders ADD COLUMN maintenance_type TEXT DEFAULT 'corretiva'`);
+  db.exec(`ALTER TABLE service_orders ADD COLUMN technician_name TEXT`);
+  db.exec(`ALTER TABLE service_orders ADD COLUMN tools TEXT`); // JSON array
+  db.exec(`ALTER TABLE service_orders ADD COLUMN final_report TEXT`);
+} catch (e) {
+  // colunas já existem, ignorar
+}
+
+  // Adicionar coluna quick_specs se não existir
+try {
+  db.exec(`ALTER TABLE machines ADD COLUMN quick_specs TEXT DEFAULT '[]'`);
+} catch (e) {
+  // Coluna já existe, ignorar
+  console.log('quick_specs column already exists');
+}
+
   // Checklist Templates table (defines what to check for each machine model)
   db.exec(`
     CREATE TABLE IF NOT EXISTS checklist_templates (

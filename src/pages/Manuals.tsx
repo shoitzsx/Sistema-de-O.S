@@ -1,16 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
-import { Search, FileText, Upload, X } from 'lucide-react';
+import { Search, FileText, Upload, X, Play } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface Machine {
   id: number;
   name: string;
   model: string;
-  image_url: string;
+  image_url: string | null;
   manual_url: string | null;
   description: string;
+  quick_specs: string[]; // array de especificações
+}
+
+interface ServiceOrder {
+  id: number;
+  machine_name: string;
+  operator_name: string;
+  maintenance_type: 'preventiva' | 'corretiva';
+  technician_name: string;
+  description: string;
+  tools: string[];
+  component: string;
+  start_time: string;
+  end_time: string | null;
+  status: 'open' | 'closed';
+  final_report?: string;
 }
 
 export default function Manuals() {
@@ -24,13 +40,29 @@ export default function Manuals() {
   const [newMachine, setNewMachine] = useState({
     name: '',
     model: '',
-    image_url: '',
-    description: ''
+    description: '',
+    quickSpecs: [] as string[],
+    imageFile: null as File | null
   });
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [checklistItems, setChecklistItems] = useState<{category: string, items: string[]}[]>([]);
+
+  // Service Orders state (copied/adapted from ServiceOrders.tsx)
+  const [orders, setOrders] = useState<ServiceOrder[]>([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [newOrder, setNewOrder] = useState({
+    machine_id: '',
+    maintenance_type: 'corretiva' as 'preventiva' | 'corretiva',
+    technician_name: user?.name || '',
+    component: '',
+    description: '',
+    tools: [] as string[],
+    toolsInput: ''
+  });
 
   useEffect(() => {
     fetchMachines();
+    fetchOrders();
   }, []);
 
   useEffect(() => {
@@ -47,27 +79,194 @@ export default function Manuals() {
       .then(data => setMachines(data));
   };
 
+  const fetchOrders = () => {
+    fetch('/api/service-orders')
+      .then(res => res.json())
+      .then(data => setOrders(data));
+  };
+
+  const handleCreateOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+
+    try {
+      const res = await fetch('/api/service-orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...newOrder,
+          operator_id: user.id,
+          start_time: new Date().toISOString()
+        }),
+      });
+
+      if (res.ok) {
+        fetchOrders();
+        setIsModalOpen(false);
+        setNewOrder({
+          machine_id: '',
+          maintenance_type: 'corretiva',
+          technician_name: user.name,
+          component: '',
+          description: '',
+          tools: [],
+          toolsInput: ''
+        });
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const addTool = () => {
+    if (newOrder.toolsInput.trim()) {
+      setNewOrder({
+        ...newOrder,
+        tools: [...newOrder.tools, newOrder.toolsInput.trim()],
+        toolsInput: ''
+      });
+    }
+  };
+
+  const removeTool = (index: number) => {
+    setNewOrder({
+      ...newOrder,
+      tools: newOrder.tools.filter((_, i) => i !== index)
+    });
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setNewMachine({ ...newMachine, imageFile: file });
+      setImagePreview(URL.createObjectURL(file));
+    }
+  };
+
+  const handleQuickSpecsChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const lines = e.target.value.split('\n').filter(line => line.trim() !== '');
+    setNewMachine({ ...newMachine, quickSpecs: lines });
+  };
+
   const handleCreateMachine = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const formData = new FormData();
+    formData.append('name', newMachine.name);
+    formData.append('model', newMachine.model);
+    formData.append('description', newMachine.description);
+    formData.append('quick_specs', JSON.stringify(newMachine.quickSpecs));
+    if (newMachine.imageFile) {
+      formData.append('image', newMachine.imageFile);
+    }
+
     try {
       const res = await fetch('/api/machines', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newMachine),
+        body: formData, // não definir Content-Type, o browser faz automaticamente com boundary
       });
+
       if (res.ok) {
         fetchMachines();
         setIsMachineModalOpen(false);
-        setNewMachine({ name: '', model: '', image_url: '', description: '' });
+        setNewMachine({ name: '', model: '', description: '', quickSpecs: [], imageFile: null });
+        setImagePreview(null);
         alert('Equipamento cadastrado com sucesso!');
       } else {
-        alert('Erro ao cadastrar equipamento.');
+        const err = await res.json();
+        alert(err.error || 'Erro ao cadastrar equipamento.');
       }
     } catch (err) {
       console.error(err);
       alert('Erro ao cadastrar equipamento.');
     }
   };
+
+  const [finishModalOpen, setFinishModalOpen] = useState(false);
+const [finishingOrderId, setFinishingOrderId] = useState<number | null>(null);
+const [finalReport, setFinalReport] = useState('');
+
+const handleFinishOrder = async (id: number) => {
+  setFinishingOrderId(id);
+  setFinishModalOpen(true);
+};
+
+const submitFinish = async () => {
+  if (!finishingOrderId) return;
+  try {
+    const res = await fetch(`/api/service-orders/${finishingOrderId}/close`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        end_time: new Date().toISOString(),
+        final_report: finalReport
+      }),
+    });
+
+    if (res.ok) {
+      fetchOrders();
+      setFinishModalOpen(false);
+      setFinalReport('');
+      setFinishingOrderId(null);
+    }
+  } catch (err) {
+    console.error(err);
+  }
+};
+
+const [editReportModalOpen, setEditReportModalOpen] = useState(false);
+const [editingOrder, setEditingOrder] = useState<ServiceOrder | null>(null);
+const [editReport, setEditReport] = useState('');
+
+const openEditReport = (order: ServiceOrder) => {
+  setEditingOrder(order);
+  setEditReport(order.final_report || '');
+  setEditReportModalOpen(true);
+};
+
+const submitEditReport = async () => {
+  if (!editingOrder) return;
+  try {
+    const res = await fetch(`/api/service-orders/${editingOrder.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ final_report: editReport }),
+    });
+
+    if (res.ok) {
+      fetchOrders();
+      setEditReportModalOpen(false);
+      setEditingOrder(null);
+    }
+  } catch (err) {
+    console.error(err);
+  }
+};
+
+const calculateDuration = (start: string, end: string | null) => {
+  const startTime = new Date(start).getTime();
+  const endTime = end ? new Date(end).getTime() : Date.now();
+  const diff = endTime - startTime;
+  
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+  const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+  
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+};
+
+// No componente, dentro do map de orders, usar um estado local para forçar atualização
+// Mas como queremos atualizar todas simultaneamente, podemos usar um timer global
+
+const [timer, setTimer] = useState(0);
+
+useEffect(() => {
+  const interval = setInterval(() => {
+    setTimer(t => t + 1); // força re-render a cada segundo
+  }, 1000);
+  return () => clearInterval(interval);
+}, []);
+
 
   const handleDeleteMachine = async (id: number) => {
     if (!confirm('Tem certeza que deseja excluir este equipamento? Todos os dados associados serão perdidos.')) return;
@@ -109,7 +308,7 @@ export default function Manuals() {
     }
   };
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>, machineId: number) => {
+  const handleUploadManual = async (e: React.ChangeEvent<HTMLInputElement>, machineId: number) => {
     if (!e.target.files || e.target.files.length === 0) return;
     
     const file = e.target.files[0];
@@ -123,8 +322,7 @@ export default function Manuals() {
         body: formData,
       });
       if (res.ok) {
-        fetchMachines(); // Refresh list
-        // Update selected machine manual url
+        fetchMachines();
         const { manual_url } = await res.json();
         if (selectedMachine && selectedMachine.id === machineId) {
           setSelectedMachine({ ...selectedMachine, manual_url });
@@ -214,6 +412,7 @@ export default function Manuals() {
         ))}
       </div>
 
+      {/* Modal de criação de equipamento */}
       <AnimatePresence>
         {isMachineModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -221,7 +420,7 @@ export default function Manuals() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6"
+              className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto"
             >
               <h3 className="text-xl font-bold text-slate-900 mb-6">Novo Equipamento</h3>
               <form onSubmit={handleCreateMachine} className="space-y-4">
@@ -246,14 +445,16 @@ export default function Manuals() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">URL da Imagem</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Foto do Equipamento</label>
                   <input
-                    type="text"
-                    value={newMachine.image_url}
-                    onChange={e => setNewMachine({ ...newMachine, image_url: e.target.value })}
-                    className="w-full p-2.5 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-200 outline-none"
-                    placeholder="https://..."
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageChange}
+                    className="w-full p-2 border border-slate-200 rounded-lg"
                   />
+                  {imagePreview && (
+                    <img src={imagePreview} alt="Preview" className="mt-2 w-full h-32 object-cover rounded-lg" />
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Descrição</label>
@@ -264,10 +465,24 @@ export default function Manuals() {
                     rows={3}
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Especificações Rápidas (uma por linha)</label>
+                  <textarea
+                    value={newMachine.quickSpecs.join('\n')}
+                    onChange={handleQuickSpecsChange}
+                    className="w-full p-2.5 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-200 outline-none"
+                    rows={4}
+                    placeholder="Ex: Motor Diesel&#10;Hidráulica de Alta Pressão&#10;Cabine Climatizada"
+                  />
+                </div>
                 <div className="flex gap-3 mt-6">
                   <button
                     type="button"
-                    onClick={() => setIsMachineModalOpen(false)}
+                    onClick={() => {
+                      setIsMachineModalOpen(false);
+                      setNewMachine({ name: '', model: '', description: '', quickSpecs: [], imageFile: null });
+                      setImagePreview(null);
+                    }}
                     className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-3 rounded-xl transition-colors"
                   >
                     Cancelar
@@ -284,7 +499,192 @@ export default function Manuals() {
           </div>
         )}
       </AnimatePresence>
+        
+        <form onSubmit={handleCreateOrder} className="space-y-4">
+  <div>
+    <label className="block text-sm font-medium text-slate-700 mb-1">Equipamento</label>
+    <select
+      required
+      value={newOrder.machine_id}
+      onChange={(e) => setNewOrder({ ...newOrder, machine_id: e.target.value })}
+      className="w-full p-3 rounded-lg border border-slate-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none bg-white"
+    >
+      <option value="">Selecione...</option>
+      {machines.map(m => (
+        <option key={m.id} value={m.id}>{m.name}</option>
+      ))}
+    </select>
+  </div>
 
+  <div>
+    <label className="block text-sm font-medium text-slate-700 mb-1">Tipo de Manutenção</label>
+    <select
+      value={newOrder.maintenance_type}
+      onChange={(e) => setNewOrder({ ...newOrder, maintenance_type: e.target.value as 'preventiva' | 'corretiva' })}
+      className="w-full p-3 rounded-lg border border-slate-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none bg-white"
+    >
+      <option value="corretiva">Corretiva</option>
+      <option value="preventiva">Preventiva</option>
+    </select>
+  </div>
+
+  <div>
+    <label className="block text-sm font-medium text-slate-700 mb-1">Responsável</label>
+    <input
+      type="text"
+      required
+      value={newOrder.technician_name}
+      onChange={(e) => setNewOrder({ ...newOrder, technician_name: e.target.value })}
+      className="w-full p-3 rounded-lg border border-slate-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none"
+    />
+  </div>
+
+  <div>
+    <label className="block text-sm font-medium text-slate-700 mb-1">Componente com Falha</label>
+    <input
+      type="text"
+      required
+      placeholder="Ex: Motor, Mangueira, Pneu..."
+      value={newOrder.component}
+      onChange={(e) => setNewOrder({ ...newOrder, component: e.target.value })}
+      className="w-full p-3 rounded-lg border border-slate-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none"
+    />
+  </div>
+
+  <div>
+    <label className="block text-sm font-medium text-slate-700 mb-1">Descrição do Problema</label>
+    <textarea
+      required
+      placeholder="Descreva o problema detalhadamente..."
+      value={newOrder.description}
+      onChange={(e) => setNewOrder({ ...newOrder, description: e.target.value })}
+      className="w-full p-3 rounded-lg border border-slate-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none"
+      rows={3}
+    />
+  </div>
+
+  <div>
+    <label className="block text-sm font-medium text-slate-700 mb-1">Ferramentas Utilizadas</label>
+    <div className="flex gap-2">
+      <input
+        type="text"
+        value={newOrder.toolsInput}
+        onChange={(e) => setNewOrder({ ...newOrder, toolsInput: e.target.value })}
+        className="flex-1 p-3 rounded-lg border border-slate-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none"
+        placeholder="Ex: Chave de fenda"
+        onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addTool())}
+      />
+      <button
+        type="button"
+        onClick={addTool}
+        className="bg-orange-100 hover:bg-orange-200 text-orange-700 px-4 rounded-lg"
+      >
+        Adicionar
+      </button>
+    </div>
+    <div className="flex flex-wrap gap-2 mt-2">
+      {newOrder.tools.map((tool, index) => (
+        <span key={index} className="bg-slate-100 text-slate-700 px-3 py-1 rounded-full text-sm flex items-center gap-1">
+          {tool}
+          <button type="button" onClick={() => removeTool(index)} className="text-slate-500 hover:text-red-500">
+            <X size={14} />
+          </button>
+        </span>
+      ))}
+    </div>
+  </div>
+
+  <div className="flex gap-3 mt-6">
+    <button
+      type="button"
+      onClick={() => setIsModalOpen(false)}
+      className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-3 rounded-xl transition-colors"
+    >
+      Cancelar
+    </button>
+    <button
+      type="submit"
+      className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-medium py-3 rounded-xl shadow-lg shadow-orange-500/20 transition-colors flex items-center justify-center gap-2"
+    >
+      <Play size={18} /> Iniciar Trabalho
+    </button>
+  </div>
+</form>
+
+<AnimatePresence>
+  {finishModalOpen && (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6"
+      >
+        <h3 className="text-xl font-bold text-slate-900 mb-6">Finalizar Ordem de Serviço</h3>
+        <p className="text-slate-500 mb-4">Descreva o que foi realizado, problemas adicionais, etc.</p>
+        <textarea
+          value={finalReport}
+          onChange={(e) => setFinalReport(e.target.value)}
+          className="w-full p-3 rounded-lg border border-slate-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none"
+          rows={5}
+          placeholder="Ex: Substituído motor, realizado teste, tudo ok..."
+        />
+        <div className="flex gap-3 mt-6">
+          <button
+            onClick={() => setFinishModalOpen(false)}
+            className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-3 rounded-xl transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={submitFinish}
+            className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-medium py-3 rounded-xl shadow-lg shadow-orange-500/20 transition-colors"
+          >
+            Finalizar
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  )}
+</AnimatePresence>
+
+<AnimatePresence>
+  {editReportModalOpen && editingOrder && (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6"
+      >
+        <h3 className="text-xl font-bold text-slate-900 mb-6">Editar Relatório Final</h3>
+        <p className="text-slate-500 mb-4">Atualize as informações da OS #{editingOrder.id.toString().padStart(4, '0')}</p>
+        <textarea
+          value={editReport}
+          onChange={(e) => setEditReport(e.target.value)}
+          className="w-full p-3 rounded-lg border border-slate-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none"
+          rows={5}
+        />
+        <div className="flex gap-3 mt-6">
+          <button
+            onClick={() => setEditReportModalOpen(false)}
+            className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-3 rounded-xl transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={submitEditReport}
+            className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-medium py-3 rounded-xl shadow-lg shadow-orange-500/20 transition-colors"
+          >
+            Salvar
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  )}
+</AnimatePresence>
+
+      {/* Modal de edição de checklist */}
       <AnimatePresence>
         {isChecklistModalOpen && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -386,6 +786,7 @@ export default function Manuals() {
         )}
       </AnimatePresence>
 
+      {/* Modal de detalhes do equipamento */}
       <AnimatePresence>
         {selectedMachine && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setSelectedMachine(null)}>
@@ -436,10 +837,15 @@ export default function Manuals() {
                   
                   <h4 className="text-lg font-semibold text-slate-800 mt-6 mb-2">Especificações Rápidas</h4>
                   <ul className="grid grid-cols-2 gap-2 text-sm text-slate-600">
-                    <li className="flex items-center gap-2"><span className="w-2 h-2 bg-emerald-500 rounded-full"></span> Motor Diesel</li>
-                    <li className="flex items-center gap-2"><span className="w-2 h-2 bg-emerald-500 rounded-full"></span> Hidráulica de Alta Pressão</li>
-                    <li className="flex items-center gap-2"><span className="w-2 h-2 bg-emerald-500 rounded-full"></span> Cabine Climatizada</li>
-                    <li className="flex items-center gap-2"><span className="w-2 h-2 bg-emerald-500 rounded-full"></span> Tração 4x4 / 6x6</li>
+                    {selectedMachine.quick_specs && selectedMachine.quick_specs.length > 0 ? (
+                      selectedMachine.quick_specs.map((spec, index) => (
+                        <li key={index} className="flex items-center gap-2">
+                          <span className="w-2 h-2 bg-emerald-500 rounded-full"></span> {spec}
+                        </li>
+                      ))
+                    ) : (
+                      <li className="text-slate-400">Nenhuma especificação cadastrada.</li>
+                    )}
                   </ul>
                 </div>
 
@@ -470,7 +876,7 @@ export default function Manuals() {
                           type="file" 
                           accept=".pdf" 
                           className="hidden" 
-                          onChange={(e) => handleUpload(e, selectedMachine.id)}
+                          onChange={(e) => handleUploadManual(e, selectedMachine.id)}
                           disabled={isUploading}
                         />
                       </label>

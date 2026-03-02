@@ -32,7 +32,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <div className="w-8 h-8 bg-white/10 rounded-full flex items-center justify-center">
               <span className="font-bold text-lg">A</span>
             </div>
-            <h1 className="text-xl font-bold tracking-tight">Aguia Florestal</h1>
+            <h1 className="text-xl font-bold tracking-tight">Águia Florestal</h1>
           </div>
           
           <div className="flex items-center gap-4">

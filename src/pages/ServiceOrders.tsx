@@ -1,8 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
-import { Plus, Clock, CheckCircle, AlertTriangle, Play, Square, X } from 'lucide-react';
+import { Plus, Clock, CheckCircle, AlertTriangle, Play, Square, X, Package } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+
+interface PartTool {
+  id: number;
+  name: string;
+  description: string;
+  category: 'part' | 'tool';
+}
 
 interface ServiceOrder {
   id: number;
@@ -12,6 +19,7 @@ interface ServiceOrder {
   technician_name: string;
   description: string;
   tools: string[];
+  used_parts_tools?: number[];
   component: string;
   start_time: string;
   end_time: string | null;
@@ -33,7 +41,9 @@ export default function ServiceOrders() {
   const [finishModalOpen, setFinishModalOpen] = useState(false);
   const [finishingOrderId, setFinishingOrderId] = useState<number | null>(null);
   const [finalReport, setFinalReport] = useState('');
-
+  const [partsTools, setPartsTools] = useState<PartTool[]>([]);
+  const [isPartsToolsModalOpen, setIsPartsToolsModalOpen] = useState(false);
+  const [newPartTool, setNewPartTool] = useState({ name: '', description: '', category: 'tool' as 'tool' | 'part' });
   const [editReportModalOpen, setEditReportModalOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<ServiceOrder | null>(null);
   const [editReport, setEditReport] = useState('');
@@ -43,12 +53,23 @@ export default function ServiceOrders() {
   const [newOrder, setNewOrder] = useState({
     machine_id: '',
     maintenance_type: 'corretiva' as 'preventiva' | 'corretiva',
-    technician_name: user?.name || '',
+    technician_name: '',
     component: '',
     description: '',
-    tools: [] as string[],
-    toolsInput: '' // campo auxiliar para adicionar ferramentas
+    used_parts_tools: [] as number[] // array de IDs selecionados
   });
+
+  useEffect(() => {
+    fetchOrders();
+    fetch('/api/machines').then(res => res.json()).then(setMachines);
+    fetchPartsTools();
+  }, []);
+
+  const fetchPartsTools = () => {
+    fetch('/api/parts-tools')
+      .then(res => res.json())
+      .then(setPartsTools);
+  };
 
   useEffect(() => {
     fetchOrders();
@@ -71,6 +92,37 @@ export default function ServiceOrders() {
       .then(data => setOrders(data));
   };
 
+
+  const handleCreatePartTool = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/parts-tools', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newPartTool),
+      });
+      if (res.ok) {
+        fetchPartsTools();
+        setNewPartTool({ name: '', description: '', category: 'tool' });
+        alert('Item cadastrado!');
+      } else {
+        alert('Erro ao cadastrar.');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeletePartTool = async (id: number) => {
+    if (!confirm('Remover este item?')) return;
+    try {
+      await fetch(`/api/parts-tools/${id}`, { method: 'DELETE' });
+      fetchPartsTools();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
@@ -82,7 +134,8 @@ export default function ServiceOrders() {
         body: JSON.stringify({
           ...newOrder,
           operator_id: user.id,
-          start_time: new Date().toISOString()
+          start_time: new Date().toISOString(),
+          used_parts_tools: newOrder.used_parts_tools
         }),
       });
 
@@ -92,11 +145,10 @@ export default function ServiceOrders() {
         setNewOrder({
           machine_id: '',
           maintenance_type: 'corretiva',
-          technician_name: user.name,
+          technician_name: '',
           component: '',
           description: '',
-          tools: [],
-          toolsInput: ''
+          used_parts_tools: []
         });
       }
     } catch (err) {
@@ -160,12 +212,22 @@ export default function ServiceOrders() {
           <h2 className="text-2xl font-bold text-slate-900">Manutenção Corretiva</h2>
           <p className="text-slate-500">Gerenciamento de ordens de serviço</p>
         </div>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="bg-orange-500 hover:bg-orange-600 text-white font-medium py-2.5 px-5 rounded-xl shadow-lg shadow-orange-500/20 flex items-center gap-2 transition-all"
-        >
-          <Plus size={20} /> Nova O.S.
-        </button>
+        <div className="flex items-center gap-3">
+          {user?.role === 'admin' && (
+            <button
+              onClick={() => setIsPartsToolsModalOpen(true)}
+              className="bg-purple-600 hover:bg-purple-700 text-white font-medium py-2.5 px-5 rounded-xl shadow-lg shadow-purple-600/20 flex items-center gap-2 transition-all"
+            >
+              <Package size={20} /> Cadastrar Peça/Ferramenta
+            </button>
+          )}
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="bg-orange-500 hover:bg-orange-600 text-white font-medium py-2.5 px-5 rounded-xl shadow-lg shadow-orange-500/20 flex items-center gap-2 transition-all"
+          >
+            <Plus size={20} /> Nova O.S.
+          </button>
+        </div>
       </div>
 
       <div className="grid gap-4">
@@ -186,6 +248,21 @@ export default function ServiceOrders() {
               <h3 className="text-lg font-bold text-slate-900">{order.machine_name}</h3>
               <p className="text-slate-600 mt-1"><span className="font-medium">Componente:</span> {order.component}</p>
               <p className="text-slate-500 text-sm mt-2 bg-slate-50 p-2 rounded-lg">{order.description}</p>
+              {order.used_parts_tools && order.used_parts_tools.length > 0 && (
+                <div className="mt-3">
+                  <p className="text-xs font-medium text-slate-500 mb-1">Itens utilizados:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {order.used_parts_tools.map(id => {
+                      const item = partsTools.find(pt => pt.id === id);
+                      return item ? (
+                        <span key={id} className={`text-xs px-2 py-1 rounded-full ${item.category === 'tool' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                          {item.name}
+                        </span>
+                      ) : null;
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex flex-col items-end gap-4 min-w-[200px]">
@@ -256,18 +333,35 @@ export default function ServiceOrders() {
 
               <form onSubmit={handleCreateOrder} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Equipamento</label>
-                  <select
-                    required
-                    value={newOrder.machine_id}
-                    onChange={(e) => setNewOrder({ ...newOrder, machine_id: e.target.value })}
-                    className="w-full p-3 rounded-lg border border-slate-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none bg-white"
-                  >
-                    <option value="">Selecione...</option>
-                    {machines.map(m => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Peças/Ferramentas Utilizadas</label>
+                  <div className="space-y-2 max-h-48 overflow-y-auto border border-slate-200 rounded-lg p-3">
+                    {partsTools.map(item => (
+                      <label key={item.id} className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg">
+                        <input
+                          type="checkbox"
+                          value={item.id}
+                          checked={newOrder.used_parts_tools.includes(item.id)}
+                          onChange={(e) => {
+                            const id = item.id;
+                            setNewOrder(prev => ({
+                              ...prev,
+                              used_parts_tools: e.target.checked
+                                ? [...prev.used_parts_tools, id]
+                                : prev.used_parts_tools.filter(i => i !== id)
+                            }));
+                          }}
+                          className="rounded border-slate-300 text-orange-600 focus:ring-orange-500"
+                        />
+                        <div className="flex-1">
+                          <span className="font-medium text-slate-700">{item.name}</span>
+                          {item.description && <span className="text-xs text-slate-500 ml-2">({item.description})</span>}
+                          <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${item.category === 'tool' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                            {item.category === 'tool' ? 'Ferramenta' : 'Peça'}
+                          </span>
+                        </div>
+                      </label>
                     ))}
-                  </select>
+                  </div>
                 </div>
 
                 <div>
@@ -364,6 +458,92 @@ export default function ServiceOrders() {
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Parts/Tools management modal */}
+      <AnimatePresence>
+        {isPartsToolsModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto"
+            >
+              <h3 className="text-xl font-bold text-slate-900 mb-6">Cadastrar Peça / Ferramenta</h3>
+              
+              <form onSubmit={handleCreatePartTool} className="space-y-4 mb-6">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Nome</label>
+                  <input
+                    type="text"
+                    required
+                    value={newPartTool.name}
+                    onChange={e => setNewPartTool({ ...newPartTool, name: e.target.value })}
+                    className="w-full p-2.5 rounded-lg border border-slate-200 focus:ring-2 focus:ring-purple-200 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Descrição (opcional)</label>
+                  <input
+                    type="text"
+                    value={newPartTool.description}
+                    onChange={e => setNewPartTool({ ...newPartTool, description: e.target.value })}
+                    className="w-full p-2.5 rounded-lg border border-slate-200 focus:ring-2 focus:ring-purple-200 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Categoria</label>
+                  <select
+                    value={newPartTool.category}
+                    onChange={e => setNewPartTool({ ...newPartTool, category: e.target.value as 'tool' | 'part' })}
+                    className="w-full p-2.5 rounded-lg border border-slate-200 focus:ring-2 focus:ring-purple-200 outline-none bg-white"
+                  >
+                    <option value="tool">Ferramenta</option>
+                    <option value="part">Peça</option>
+                  </select>
+                </div>
+                <button
+                  type="submit"
+                  className="w-full bg-purple-600 hover:bg-purple-700 text-white font-medium py-2.5 rounded-xl transition-colors"
+                >
+                  Salvar Item
+                </button>
+              </form>
+
+              <h4 className="font-bold text-slate-800 mb-3">Itens Cadastrados</h4>
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {partsTools.map(item => (
+                  <div key={item.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                    <div>
+                      <span className="font-medium text-slate-800">{item.name}</span>
+                      {item.description && <span className="text-xs text-slate-500 ml-2">({item.description})</span>}
+                      <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${item.category === 'tool' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                        {item.category === 'tool' ? 'Ferramenta' : 'Peça'}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => handleDeletePartTool(item.id)}
+                      className="text-red-500 hover:text-red-700"
+                      title="Remover"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-6">
+                <button
+                  onClick={() => setIsPartsToolsModalOpen(false)}
+                  className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-3 rounded-xl transition-colors"
+                >
+                  Fechar
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

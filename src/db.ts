@@ -43,6 +43,14 @@ try {
   // colunas já existem, ignorar
 }
 
+// Add used_parts_tools column to service_orders if not exists
+try {
+  db.exec(`ALTER TABLE service_orders ADD COLUMN used_parts_tools TEXT DEFAULT '[]'`);
+} catch (e) {
+  // Column already exists, ignore
+  console.log('used_parts_tools column already exists');
+}
+
   // Adicionar coluna quick_specs se não existir
 try {
   db.exec(`ALTER TABLE machines ADD COLUMN quick_specs TEXT DEFAULT '[]'`);
@@ -89,6 +97,16 @@ try {
       FOREIGN KEY (operator_id) REFERENCES users(id)
     );
   `);
+
+  // Parts/Tools table
+db.exec(`
+  CREATE TABLE IF NOT EXISTS parts_tools (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT,
+    category TEXT CHECK(category IN ('part', 'tool')) NOT NULL
+  );
+`);
 
   console.log('Database initialized');
   seedDb();
@@ -143,6 +161,16 @@ function seedDb() {
       }
     ];
     insertTemplate.run('DAF 510 6X2', JSON.stringify(dafItems));
+
+    // Seed parts/tools
+const partsToolsCount = db.prepare('SELECT count(*) as count FROM parts_tools').get() as { count: number };
+if (partsToolsCount.count === 0) {
+  const insertPartTool = db.prepare('INSERT INTO parts_tools (name, description, category) VALUES (?, ?, ?)');
+  insertPartTool.run('Chave de fenda', 'Chave de fenda Philips', 'tool');
+  insertPartTool.run('Martelo', 'Martelo de borracha', 'tool');
+  insertPartTool.run('Filtro de óleo', 'Filtro para motor DAF', 'part');
+  insertPartTool.run('Correia do alternador', 'Correia original', 'part');
+}
 
     // JD 1270E Template (Simplified from OCR)
     const jdItems = [

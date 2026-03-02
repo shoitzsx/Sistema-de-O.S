@@ -53,7 +53,7 @@ export default function Login() {
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
       <div className="max-w-md w-full">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Aguia Florestal</h1>
+          <h1 className="text-3xl font-bold text-white mb-2">Águia Florestal</h1>
           <p className="text-slate-400">Selecione seu perfil para continuar</p>
         </div>
 

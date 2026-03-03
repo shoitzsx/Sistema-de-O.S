@@ -51,14 +51,15 @@ export default function ServiceOrders() {
   const [editToolsInput, setEditToolsInput] = useState('');
   const [editComponent, setEditComponent] = useState('');
   const [newOrder, setNewOrder] = useState({
-    machine_id: '',
-    maintenance_type: 'corretiva' as 'preventiva' | 'corretiva',
-    technician_name: '',
-    component: '',
-    description: '',
-    used_parts_tools: [] as number[] // array de IDs selecionados
-  });
-
+  machine_id: '',
+  maintenance_type: 'corretiva' as 'preventiva' | 'corretiva',
+  technician_name: '',
+  component: '',
+  description: '',
+  used_parts_tools: [] as number[],
+  tools: [] as string[],
+  toolsInput: ''   // 🔥 ADICIONE ISSO
+});
   useEffect(() => {
     fetchOrders();
     fetch('/api/machines').then(res => res.json()).then(setMachines);
@@ -87,10 +88,10 @@ export default function ServiceOrders() {
   }, []);
 
   const fetchOrders = () => {
-    fetch('/api/service-orders')
+    fetch('http://localhost:3333/api/service-orders')
       .then(res => res.json())
       .then(data => setOrders(data));
-  };
+ };
 
 
   const handleCreatePartTool = async (e: React.FormEvent) => {
@@ -474,7 +475,7 @@ export default function ServiceOrders() {
               className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto"
             >
               <h3 className="text-xl font-bold text-slate-900 mb-6">Cadastrar Peça / Ferramenta</h3>
-              
+
               <form onSubmit={handleCreatePartTool} className="space-y-4 mb-6">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Nome</label>
@@ -643,7 +644,7 @@ export default function ServiceOrders() {
                 <button onClick={async () => {
                   if (!editingOrder) return;
                   try {
-                    const res = await fetch(`/api/service-orders/${editingOrder.id}`, {
+                    const res = await fetch(`http://localhost:3333/api/service-orders/${editingOrder.id}`, {
                       method: 'PUT',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ final_report: editReport, tools: editTools, component: editComponent }),

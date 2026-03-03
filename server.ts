@@ -42,7 +42,7 @@ async function startServer() {
   app.post("/api/login", (req, res) => {
     const { username, password } = req.body;
     const user = db.prepare('SELECT * FROM users WHERE username = ? AND password = ?').get(username, password) as any;
-    
+
     if (user) {
       // In a real app, sign a JWT here. For now, return the user object.
       const { password, ...userWithoutPassword } = user;
@@ -97,6 +97,35 @@ async function startServer() {
     }
   });
 
+  // Update service order (final report, used parts, etc.)
+app.put("/api/service-orders/:id", (req, res) => {
+  const { final_report, used_parts_tools } = req.body;
+  try {
+    // Build query dynamically based on provided fields
+    if (final_report !== undefined && used_parts_tools !== undefined) {
+      db.prepare('UPDATE service_orders SET final_report = ?, used_parts_tools = ? WHERE id = ?').run(
+        final_report, JSON.stringify(used_parts_tools), req.params.id
+      );
+    } else if (final_report !== undefined) {
+      db.prepare('UPDATE service_orders SET final_report = ? WHERE id = ?').run(final_report, req.params.id);
+    } else if (used_parts_tools !== undefined) {
+      db.prepare('UPDATE service_orders SET used_parts_tools = ? WHERE id = ?').run(JSON.stringify(used_parts_tools), req.params.id);
+    }
+    res.json({ success: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to update service order" });
+  }
+});
+
+  app.put("/api/service-orders/:id", (req, res) => {
+    const { final_report } = req.body;
+    db.prepare('UPDATE service_orders SET final_report = ? WHERE id = ?').run(
+      final_report, parseInt(req.params.id)
+    );
+    res.json({ success: true });
+  });
+
   app.delete("/api/users/:id", (req, res) => {
     try {
       const userId = req.params.id;
@@ -114,37 +143,28 @@ async function startServer() {
   // Machines
   app.get("/api/machines", (req, res) => {
     const machines = db.prepare('SELECT * FROM machines').all();
-    res.json(machines);
+    res.json(machines.map((m: any) => ({
+      ...m,
+      quick_specs: JSON.parse(m.quick_specs || '[]')
+    })));
   });
 
-  app.post("/api/machines", (req, res) => {
-    const { name, model, image_url, description } = req.body;
-    try {
-      const result = db.prepare('INSERT INTO machines (name, model, image_url, description) VALUES (?, ?, ?, ?)').run(
-        name, model, image_url, description
-      );
-      res.json({ id: result.lastInsertRowid });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to create machine" });
+  app.post("/api/machines", upload.single('image'), (req, res) => {
+    const { name, model, description, quick_specs } = req.body;
+    let image_url = null;
+    if (req.file) {
+      image_url = `/uploads/${req.file.filename}`;
     }
-  });
-
-  app.delete("/api/machines/:id", (req, res) => {
+    // quick_specs vem como string JSON do frontend
+    const quickSpecsStr = quick_specs || '[]';
     try {
-      const machineId = req.params.id;
-      const machine = db.prepare('SELECT model FROM machines WHERE id = ?').get(machineId) as any;
-      
-      if (machine) {
-        // Delete related records
-        db.prepare('DELETE FROM checklists WHERE machine_id = ?').run(machineId);
-        db.prepare('DELETE FROM service_orders WHERE machine_id = ?').run(machineId);
-        db.prepare('DELETE FROM checklist_templates WHERE machine_model = ?').run(machine.model);
-        db.prepare('DELETE FROM machines WHERE id = ?').run(machineId);
-      }
-      res.json({ success: true });
+      const result = db.prepare('INSERT INTO machines (name, model, image_url, description, quick_specs) VALUES (?, ?, ?, ?, ?)').run(
+        name, model, image_url, description, quickSpecsStr
+      );
+      res.json({ id: result.lastInsertRowid, image_url });
     } catch (error) {
       console.error(error);
-      res.status(500).json({ error: "Failed to delete machine" });
+      res.status(500).json({ error: "Falha ao criar equipamento" });
     }
   });
 
@@ -164,10 +184,10 @@ async function startServer() {
       res.json({ ...template, items: JSON.parse(template.items) });
     } else {
       // Return a default generic template if specific one not found
-      res.json({ 
+      res.json({
         items: [
           { category: "Geral", items: ["Verificação Visual", "Nível de Óleo", "Vazamentos"] }
-        ] 
+        ]
       });
     }
   });
@@ -209,28 +229,71 @@ async function startServer() {
 
   // Service Orders
   app.post("/api/service-orders", (req, res) => {
-    const { machine_id, operator_id, description, component, start_time } = req.body;
-    const result = db.prepare('INSERT INTO service_orders (machine_id, operator_id, description, component, start_time, status) VALUES (?, ?, ?, ?, ?, ?)').run(
-      machine_id, operator_id, description, component, start_time, 'open'
+    const { machine_id, operator_id, maintenance_type, technician_name, description, tools, component, start_time } = req.body;
+    // tools é um array, salvar como JSON string
+    const toolsStr = tools ? JSON.stringify(tools) : '[]';
+    const result = db.prepare(`
+    INSERT INTO service_orders 
+    (machine_id, operator_id, maintenance_type, technician_name, description, tools, component, start_time, status) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+      machine_id, operator_id, maintenance_type, technician_name, description, toolsStr, component, start_time, 'open'
     );
     res.json({ id: result.lastInsertRowid });
   });
 
-  app.put("/api/service-orders/:id/close", (req, res) => {
-    const { end_time } = req.body;
-    db.prepare('UPDATE service_orders SET end_time = ?, status = ? WHERE id = ?').run(end_time, 'closed', parseInt(req.params.id));
-    res.json({ success: true });
+  app.post("/api/service-orders", (req, res) => {
+  const { machine_id, operator_id, maintenance_type, technician_name, component, description, used_parts_tools, start_time } = req.body;
+  // used_parts_tools é um array de IDs, vamos salvar como JSON string
+  const usedPartsToolsStr = JSON.stringify(used_parts_tools || []);
+  const result = db.prepare(`
+    INSERT INTO service_orders 
+    (machine_id, operator_id, maintenance_type, technician_name, component, description, used_parts_tools, start_time, status) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    machine_id, operator_id, maintenance_type, technician_name, component, description, usedPartsToolsStr, start_time, 'open'
+  );
+  res.json({ id: result.lastInsertRowid });
+});
+
+  // ===== Parts/Tools routes =====
+  // GET all parts/tools
+  app.get("/api/parts-tools", (req, res) => {
+    try {
+      const items = db.prepare('SELECT * FROM parts_tools ORDER BY category, name').all();
+      res.json(items);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to fetch parts/tools" });
+    }
   });
 
-  app.get("/api/service-orders", (req, res) => {
-    const orders = db.prepare(`
-      SELECT so.*, m.name as machine_name, u.name as operator_name 
-      FROM service_orders so
-      JOIN machines m ON so.machine_id = m.id
-      JOIN users u ON so.operator_id = u.id
-      ORDER BY so.start_time DESC
-    `).all();
-    res.json(orders);
+  // POST new part/tool (admin only)
+  app.post("/api/parts-tools", (req, res) => {
+    const { name, description, category } = req.body;
+    if (!name || !category) {
+      return res.status(400).json({ error: "Name and category are required" });
+    }
+    try {
+      const result = db.prepare('INSERT INTO parts_tools (name, description, category) VALUES (?, ?, ?)').run(
+        name, description || null, category
+      );
+      res.json({ id: result.lastInsertRowid });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to create part/tool" });
+    }
+  });
+
+  // DELETE part/tool (admin only)
+  app.delete("/api/parts-tools/:id", (req, res) => {
+    try {
+      db.prepare('DELETE FROM parts_tools WHERE id = ?').run(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to delete part/tool" });
+    }
   });
 
   // Vite middleware for development

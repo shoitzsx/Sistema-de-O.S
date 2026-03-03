@@ -58,6 +58,22 @@ export default function Checklist() {
     }
   }, [editingModel]);
 
+  // load checklist when machine is selected
+  useEffect(() => {
+    if (selectedMachine) {
+      fetch(`/api/checklist-template/${selectedMachine.model}`)
+        .then(res => res.json())
+        .then(data => {
+          setTemplate(data.items || []);
+          // reset checklist data when choosing new machine
+          setChecklistData({});
+          setOpenCategory(null);
+        });
+    } else {
+      setTemplate([]);
+    }
+  }, [selectedMachine]);
+
   const handleSaveTemplate = async () => {
     if (!editingModel) return;
     try {

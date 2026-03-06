@@ -18,6 +18,12 @@ let machines = [
 ];
 let partTools = [];
 let partToolCounter = 1;
+// Mock users para preencher operator_name
+let users = [
+  { id: 1, name: 'João Silva' },
+  { id: 2, name: 'Maria Santos' },
+  { id: 3, name: 'Pedro Costa' }
+];
 
 // In-memory checklist templates keyed by machine model
 let checklistTemplates = {};
@@ -122,14 +128,45 @@ app.get('/api/service-orders', (req, res) => {
 
 // POST - criar ordem
 app.post('/api/service-orders', (req, res) => {
-  const newOrder = {
-    id: Date.now(),
-    status: 'open', // status padrão
-    start_time: new Date().toISOString(),
-    ...req.body,
-  };
-  serviceOrders.push(newOrder);
-  res.status(201).json(newOrder);
+  try {
+    // Validação básica
+    if (!req.body.machine_id) {
+      return res.status(400).json({ error: 'machine_id é obrigatório' });
+    }
+
+    // Garantir que machine_id é número
+    const machineId = parseInt(req.body.machine_id);
+    if (isNaN(machineId)) {
+      return res.status(400).json({ error: 'machine_id deve ser um número válido' });
+    }
+
+    // Busca o nome do operador e da máquina
+    const operator = users.find(u => u.id === req.body.operator_id);
+    const machine = machines.find(m => m.id === machineId);
+    
+    const newOrder = {
+      id: Date.now(),
+      status: 'open', // status padrão
+      start_time: new Date().toISOString(),
+      machine_id: machineId,
+      operator_id: req.body.operator_id,
+      operator_name: operator?.name || `Operador ${req.body.operator_id}`,
+      machine_name: machine?.name || `Máquina ${machineId}`,
+      maintenance_type: req.body.maintenance_type || 'corretiva',
+      technician_name: req.body.technician_name || '',
+      component: req.body.component || '',
+      description: req.body.description || '',
+      tools: req.body.tools || [],
+      used_parts_tools: req.body.used_parts_tools || [],
+    };
+
+    console.log('📝 Nova O.S criada:', newOrder);
+    serviceOrders.push(newOrder);
+    res.status(201).json(newOrder);
+  } catch (err) {
+    console.error('❌ Erro ao criar ordem:', err);
+    res.status(500).json({ error: 'Erro interno ao criar ordem de serviço' });
+  }
 });
 
 // PUT - atualizar ordem (usado para editar relatório, ferramentas, componente)

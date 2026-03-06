@@ -158,8 +158,11 @@ export default function ServiceOrders() {
       const machine = machines.find(m => m.id == newOrder.machine_id);
       
       const result = await createServiceOrder({
-        ...newOrder,
         machine_id: parseInt(newOrder.machine_id),
+        maintenance_type: newOrder.maintenance_type,
+        technician_name: newOrder.technician_name,
+        component: newOrder.component,
+        description: newOrder.description,
         machine_name: machine?.name || `Máquina ${newOrder.machine_id}`,
         operator_id: user.id,
         operator_name: user.name,

@@ -386,13 +386,24 @@ export default function Manuals() {
                   
                   <h4 className="text-lg font-semibold text-slate-800 mt-6 mb-2">Especificações Rápidas</h4>
                   <ul className="grid grid-cols-2 gap-2 text-sm text-slate-600">
-                    {selectedMachine.quick_specs && selectedMachine.quick_specs.length > 0 ? (
-                      selectedMachine.quick_specs.map((spec, index) => (
-                        <li key={index} className="flex items-center gap-2">
-                          <span className="w-2 h-2 bg-emerald-500 rounded-full"></span> {spec}
-                        </li>
-                      ))
-                    ) : (
+                    {selectedMachine.quick_specs ? (() => {
+                      try {
+                        const specs = typeof selectedMachine.quick_specs === 'string' 
+                          ? JSON.parse(selectedMachine.quick_specs) 
+                          : selectedMachine.quick_specs;
+                        return specs && specs.length > 0 ? (
+                          specs.map((spec, index) => (
+                            <li key={index} className="flex items-center gap-2">
+                              <span className="w-2 h-2 bg-emerald-500 rounded-full"></span> {spec}
+                            </li>
+                          ))
+                        ) : (
+                          <li className="col-span-2 text-slate-400">Nenhuma especificação</li>
+                        );
+                      } catch (e) {
+                        return <li className="col-span-2 text-slate-400">Especificações indisponíveis</li>;
+                      }
+                    })() : (
                       <li className="text-slate-400">Nenhuma especificação cadastrada.</li>
                     )}
                   </ul>

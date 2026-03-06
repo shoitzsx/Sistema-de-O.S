@@ -111,13 +111,13 @@ export default function ServiceOrders() {
       if (result) {
         await fetchPartsTools();
         setNewPartTool({ name: '', description: '', category: 'tool' });
-        alert('✅ Item cadastrado!');
+        toast.success('Item cadastrado com sucesso!');
       } else {
-        alert('❌ Erro ao cadastrar.');
+        toast.error('Erro ao cadastrar.');
       }
     } catch (err) {
       console.error(err);
-      alert('❌ Erro ao cadastrar.');
+      toast.error('Erro ao cadastrar.');
     }
   };
 
@@ -200,13 +200,13 @@ export default function ServiceOrders() {
       const success = await closeServiceOrder(id, new Date().toISOString());
       if (success) {
         await fetchOrders();
-        alert('✅ Ordem de serviço finalizada com sucesso!');
+        toast.success('Ordem de serviço finalizada com sucesso!');
       } else {
-        alert('❌ Erro ao finalizar ordem de serviço.');
+        toast.error('Erro ao finalizar ordem de serviço.');
       }
     } catch (err) {
       console.error('Erro ao finalizar ordem:', err);
-      alert('❌ Erro ao finalizar ordem de serviço.');
+      toast.error('Erro ao finalizar ordem de serviço.');
     }
   };
 
@@ -640,11 +640,11 @@ export default function ServiceOrders() {
                         setFinalReport('');
                         setFinishingOrderId(null);
                       } else {
-                        alert('❌ Erro ao finalizar ordem de serviço.');
+                        toast.error('Erro ao finalizar ordem de serviço.');
                       }
                     } catch (err) {
-                      console.error(err);
-                      alert('❌ Erro ao finalizar ordem de serviço.');
+                      console.error('Erro:', err);
+                      toast.error('Erro ao finalizar ordem de serviço.');
                     }
                   }}
                   className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-medium py-3 rounded-xl shadow-lg shadow-orange-500/20 transition-colors"
@@ -699,7 +699,7 @@ export default function ServiceOrders() {
                   
                   // Validar campo obrigatório
                   if (!editComponent.trim()) {
-                    alert('⚠️ Campo obrigatório não preenchido:\n\n"Componente"\n\nPor favor, preencha todos os campos obrigatórios.');
+                    toast.error('Componente é obrigatório');
                     return;
                   }
                   
@@ -711,7 +711,7 @@ export default function ServiceOrders() {
                     });
                     
                     if (result) {
-                      alert('✅ Relatório atualizado com sucesso!');
+                      toast.success('Relatório atualizado com sucesso!');
                       await fetchOrders();
                       setEditReportModalOpen(false);
                       setEditingOrder(null);

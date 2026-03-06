@@ -25,6 +25,93 @@ export async function loginUser(username: string, password: string): Promise<Use
   }
 }
 
+export async function getUsers(): Promise<User[]> {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*');
+
+    if (error) throw error;
+    
+    return (data || []).map(user => ({
+      ...user,
+      allowed_modules: JSON.parse(user.allowed_modules || '[]')
+    }));
+  } catch (err) {
+    console.error('Erro ao buscar usuários:', err);
+    return [];
+  }
+}
+
+export async function createUser(user: Omit<User & { password: string }, 'id'>): Promise<User | null> {
+  try {
+    const userData = {
+      ...user,
+      allowed_modules: JSON.stringify(user.allowed_modules || [])
+    };
+
+    const { data, error } = await supabase
+      .from('users')
+      .insert([userData])
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return data ? {
+      ...data,
+      allowed_modules: JSON.parse(data.allowed_modules || '[]')
+    } : null;
+  } catch (err) {
+    console.error('Erro ao criar usuário:', err);
+    return null;
+  }
+}
+
+export async function updateUser(id: number, updates: Partial<User & { password?: string }>): Promise<User | null> {
+  try {
+    const updateData: Record<string, unknown> = {};
+    
+    if (updates.name !== undefined) updateData.name = updates.name;
+    if (updates.username !== undefined) updateData.username = updates.username;
+    if (updates.password !== undefined) updateData.password = updates.password;
+    if (updates.role !== undefined) updateData.role = updates.role;
+    if (updates.allowed_modules !== undefined) updateData.allowed_modules = JSON.stringify(updates.allowed_modules || []);
+
+    const { data, error } = await supabase
+      .from('users')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return data ? {
+      ...data,
+      allowed_modules: JSON.parse(data.allowed_modules || '[]')
+    } : null;
+  } catch (err) {
+    console.error('Erro ao atualizar usuário:', err);
+    return null;
+  }
+}
+
+export async function deleteUser(id: number): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('users')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    return true;
+  } catch (err) {
+    console.error('Erro ao deletar usuário:', err);
+    return false;
+  }
+}
+
 // ===== MACHINES =====
 export async function getMachines(): Promise<Machine[]> {
   try {
@@ -282,6 +369,125 @@ export async function getChecklistTemplateByModel(model: string): Promise<any> {
     } : null;
   } catch (err) {
     console.error('Erro ao buscar template:', err);
+    return null;
+  }
+}
+
+export async function updateChecklistTemplate(machineModel: string, items: any): Promise<any> {
+  try {
+    const { data: existing, error: checkError } = await supabase
+      .from('checklist_templates')
+      .select('*')
+      .eq('machine_model', machineModel)
+      .single();
+
+    if (checkError && checkError.code !== 'PGRST116') {
+      throw checkError;
+    }
+
+    const templateData = {
+      machine_model: machineModel,
+      items: JSON.stringify(items)
+    };
+
+    if (existing) {
+      // Update existing template
+      const { data, error } = await supabase
+        .from('checklist_templates')
+        .update(templateData)
+        .eq('machine_model', machineModel)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    } else {
+      // Create new template
+      const { data, error } = await supabase
+        .from('checklist_templates')
+        .insert([templateData])
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    }
+  } catch (err) {
+    console.error('Erro ao atualizar template:', err);
+    return null;
+  }
+}
+
+export async function deleteMachine(id: number): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('machines')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    return true;
+  } catch (err) {
+    console.error('Erro ao deletar máquina:', err);
+    return false;
+  }
+}
+
+export async function updateMachine(id: number, updates: Partial<Machine>): Promise<Machine | null> {
+  try {
+    const { data, error } = await supabase
+      .from('machines')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('Erro ao atualizar máquina:', err);
+    return null;
+  }
+}
+
+export async function uploadMachineImage(machineId: number, file: File): Promise<string | null> {
+  try {
+    const fileName = `machines/${machineId}/${Date.now()}_${file.name}`;
+
+    const { data, error } = await supabase.storage
+      .from('machines')
+      .upload(fileName, file, { upsert: true });
+
+    if (error) throw error;
+
+    const { data: publicUrl } = supabase.storage
+      .from('machines')
+      .getPublicUrl(fileName);
+
+    return publicUrl?.publicUrl || null;
+  } catch (err) {
+    console.error('Erro ao fazer upload da imagem:', err);
+    return null;
+  }
+}
+
+export async function uploadMachineManual(machineId: number, file: File): Promise<string | null> {
+  try {
+    const fileName = `manuals/${machineId}/${Date.now()}_${file.name}`;
+
+    const { data, error } = await supabase.storage
+      .from('machines')
+      .upload(fileName, file, { upsert: true });
+
+    if (error) throw error;
+
+    const { data: publicUrl } = supabase.storage
+      .from('machines')
+      .getPublicUrl(fileName);
+
+    return publicUrl?.publicUrl || null;
+  } catch (err) {
+    console.error('Erro ao fazer upload do manual:', err);
     return null;
   }
 }

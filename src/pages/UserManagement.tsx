@@ -3,6 +3,7 @@ import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
 import { Trash2, UserPlus, Shield, CheckSquare, Square } from 'lucide-react';
 import { motion } from 'motion/react';
+import { getUsers, createUser, updateUser, deleteUser } from '../lib/supabaseApi';
 
 interface User {
   id: number;
@@ -32,34 +33,31 @@ export default function UserManagement() {
   const [editingId, setEditingId] = useState<number | null>(null);
 
   useEffect(() => {
-    fetchUsers();
+    loadUsers();
   }, []);
 
-  const fetchUsers = () => {
-    fetch('/api/users')
-      .then(res => res.json())
-      .then(data => setUsers(data));
+  const loadUsers = async () => {
+    const data = await getUsers();
+    setUsers(data);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const url = editingId ? `/api/users/${editingId}` : '/api/users';
-      const method = editingId ? 'PUT' : 'POST';
+      let result;
+      
+      if (editingId) {
+        result = await updateUser(editingId, newUser as any);
+      } else {
+        result = await createUser(newUser as any);
+      }
 
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newUser),
-      });
-
-      if (res.ok) {
-        fetchUsers();
+      if (result) {
+        loadUsers();
         resetForm();
         alert(editingId ? 'Usuário atualizado!' : 'Usuário criado!');
       } else {
-        const err = await res.json();
-        alert(err.error || 'Erro ao salvar usuário');
+        alert('Erro ao salvar usuário');
       }
     } catch (err) {
       console.error(err);
@@ -93,9 +91,9 @@ export default function UserManagement() {
     if (!confirm('Tem certeza que deseja excluir este usuário?')) return;
     
     try {
-      const res = await fetch(`/api/users/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        fetchUsers();
+      const success = await deleteUser(id);
+      if (success) {
+        loadUsers();
       } else {
         alert('Erro ao excluir usuário. Verifique se existem registros associados.');
       }

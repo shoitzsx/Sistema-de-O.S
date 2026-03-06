@@ -3,6 +3,7 @@ import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
 import { Search, FileText, Upload, X, Play } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { getMachines, createMachine, deleteMachine, updateMachine, getChecklistTemplateByModel, updateChecklistTemplate, uploadMachineImage, uploadMachineManual } from '../lib/supabaseApi';
 
 interface Machine {
   id: number;
@@ -33,21 +34,28 @@ export default function Manuals() {
   const [checklistItems, setChecklistItems] = useState<{category: string, items: string[]}[]>([]);
 
   useEffect(() => {
-    fetchMachines();
+    loadMachines();
   }, []);
+
+  const loadMachines = async () => {
+    const data = await getMachines();
+    setMachines(data);
+  };
 
   useEffect(() => {
     if (selectedMachine && isChecklistModalOpen) {
-      fetch(`/api/checklist-template/${selectedMachine.model}`)
-        .then(res => res.json())
-        .then(data => setChecklistItems(data.items));
+      loadChecklistTemplate();
     }
   }, [selectedMachine, isChecklistModalOpen]);
 
-  const fetchMachines = () => {
-    fetch('/api/machines')
-      .then(res => res.json())
-      .then(data => setMachines(data));
+  const loadChecklistTemplate = async () => {
+    if (!selectedMachine) return;
+    const template = await getChecklistTemplateByModel(selectedMachine.model);
+    if (template) {
+      setChecklistItems(template.items || []);
+    } else {
+      setChecklistItems([]);
+    }
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -66,30 +74,34 @@ export default function Manuals() {
   const handleCreateMachine = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const formData = new FormData();
-    formData.append('name', newMachine.name);
-    formData.append('model', newMachine.model);
-    formData.append('description', newMachine.description);
-    formData.append('quick_specs', JSON.stringify(newMachine.quickSpecs));
-    if (newMachine.imageFile) {
-      formData.append('image', newMachine.imageFile);
-    }
-
     try {
-      const res = await fetch('/api/machines', {
-        method: 'POST',
-        body: formData, // não definir Content-Type, o browser faz automaticamente com boundary
-      });
+      let imageUrl = null;
+      
+      // Upload image if provided
+      if (newMachine.imageFile) {
+        imageUrl = await uploadMachineImage(0, newMachine.imageFile); // Using 0 as temp ID
+      }
 
-      if (res.ok) {
-        fetchMachines();
+      // Create machine in Supabase
+      const machineData = {
+        name: newMachine.name,
+        model: newMachine.model,
+        description: newMachine.description,
+        quick_specs: JSON.stringify(newMachine.quickSpecs),
+        image_url: imageUrl,
+        manual_url: null
+      };
+
+      const result = await createMachine(machineData as any);
+      
+      if (result) {
+        loadMachines();
         setIsMachineModalOpen(false);
         setNewMachine({ name: '', model: '', description: '', quickSpecs: [], imageFile: null });
         setImagePreview(null);
         alert('Equipamento cadastrado com sucesso!');
       } else {
-        const err = await res.json();
-        alert(err.error || 'Erro ao cadastrar equipamento.');
+        alert('Erro ao cadastrar equipamento.');
       }
     } catch (err) {
       console.error(err);
@@ -97,26 +109,12 @@ export default function Manuals() {
     }
   };
 
-
-// No componente, dentro do map de orders, usar um estado local para forçar atualização
-// Mas como queremos atualizar todas simultaneamente, podemos usar um timer global
-
-const [timer, setTimer] = useState(0);
-
-useEffect(() => {
-  const interval = setInterval(() => {
-    setTimer(t => t + 1); // força re-render a cada segundo
-  }, 1000);
-  return () => clearInterval(interval);
-}, []);
-
-
   const handleDeleteMachine = async (id: number) => {
     if (!confirm('Tem certeza que deseja excluir este equipamento? Todos os dados associados serão perdidos.')) return;
     try {
-      const res = await fetch(`/api/machines/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        fetchMachines();
+      const success = await deleteMachine(id);
+      if (success) {
+        loadMachines();
         setSelectedMachine(null);
         alert('Equipamento excluído com sucesso!');
       } else {
@@ -131,15 +129,8 @@ useEffect(() => {
   const handleSaveChecklist = async () => {
     if (!selectedMachine) return;
     try {
-      const res = await fetch('/api/checklist-template', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          machine_model: selectedMachine.model,
-          items: checklistItems
-        }),
-      });
-      if (res.ok) {
+      const result = await updateChecklistTemplate(selectedMachine.model, checklistItems);
+      if (result) {
         setIsChecklistModalOpen(false);
         alert('Checklist atualizado com sucesso!');
       } else {
@@ -150,25 +141,27 @@ useEffect(() => {
       alert('Erro ao atualizar checklist.');
     }
   };
+  };
 
   const handleUploadManual = async (e: React.ChangeEvent<HTMLInputElement>, machineId: number) => {
     if (!e.target.files || e.target.files.length === 0) return;
     
     const file = e.target.files[0];
-    const formData = new FormData();
-    formData.append('manual', file);
 
     setIsUploading(true);
     try {
-      const res = await fetch(`/api/machines/${machineId}/manual`, {
-        method: 'POST',
-        body: formData,
-      });
-      if (res.ok) {
-        fetchMachines();
-        const { manual_url } = await res.json();
+      const manualUrl = await uploadMachineManual(machineId, file);
+      
+      if (manualUrl) {
+        // Update machine with new manual URL
+        const machine = machines.find(m => m.id === machineId);
+        if (machine) {
+          await updateMachine(machineId, { ...machine, manual_url: manualUrl } as any);
+        }
+        
+        loadMachines();
         if (selectedMachine && selectedMachine.id === machineId) {
-          setSelectedMachine({ ...selectedMachine, manual_url });
+          setSelectedMachine({ ...selectedMachine, manual_url: manualUrl });
         }
         alert('Manual enviado com sucesso!');
       } else {

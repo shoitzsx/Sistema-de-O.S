@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { User as UserIcon, Lock, ArrowRight } from 'lucide-react';
 import { motion } from 'motion/react';
+import { supabase } from '../lib/supabase';
 
 interface UserSummary {
   id: number;
@@ -20,32 +21,51 @@ export default function Login() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetch('/api/users')
-      .then(res => res.json())
-      .then(data => setUsers(data))
-      .catch(err => console.error('Failed to fetch users', err));
+    loadUsers();
   }, []);
+
+  const loadUsers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, name, username, role');
+
+      if (error) throw error;
+      setUsers(data || []);
+    } catch (err) {
+      console.error('Erro ao carregar usuários:', err);
+      alert('Erro ao conectar ao servidor. Verifique a conexão com o Supabase.');
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUser) return;
 
     try {
-      const res = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: selectedUser.username, password }),
-      });
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('username', selectedUser.username)
+        .eq('password', password)
+        .single();
 
-      if (res.ok) {
-        const data = await res.json();
-        login(data.user);
-        navigate('/');
-      } else {
+      if (error || !data) {
         setError('Senha incorreta');
+        return;
       }
+
+      login({
+        id: data.id,
+        name: data.name,
+        username: data.username,
+        role: data.role,
+        allowed_modules: JSON.parse(data.allowed_modules || '[]')
+      });
+      navigate('/');
     } catch (err) {
       setError('Erro ao conectar');
+      console.error(err);
     }
   };
 

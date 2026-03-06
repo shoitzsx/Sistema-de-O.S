@@ -3,6 +3,16 @@ import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
 import { Plus, Clock, CheckCircle, AlertTriangle, Play, Square, X, Package } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { 
+  getServiceOrders, 
+  getMachines, 
+  getPartsTools, 
+  createServiceOrder, 
+  updateServiceOrder, 
+  closeServiceOrder,
+  createPartTool,
+  deletePartTool
+} from '../lib/supabaseApi';
 
 interface PartTool {
   id: number;
@@ -15,6 +25,7 @@ interface ServiceOrder {
   id: number;
   machine_name: string;
   operator_name: string;
+  operator_id: number;
   maintenance_type: 'preventiva' | 'corretiva';
   technician_name: string;
   description: string;
@@ -58,67 +69,66 @@ export default function ServiceOrders() {
   description: '',
   used_parts_tools: [] as number[],
   tools: [] as string[],
-  toolsInput: ''   // 🔥 ADICIONE ISSO
+  toolsInput: ''
 });
   useEffect(() => {
     fetchOrders();
-    fetch('/api/machines').then(res => res.json()).then(setMachines);
+    fetchMachines();
     fetchPartsTools();
   }, []);
 
-  const fetchPartsTools = () => {
-    fetch('/api/parts-tools')
-      .then(res => res.json())
-      .then(setPartsTools);
+  const fetchMachines = async () => {
+    try {
+      const data = await getMachines();
+      setMachines(data);
+    } catch (err) {
+      console.error('Erro ao buscar máquinas:', err);
+    }
   };
 
-  useEffect(() => {
-    fetchOrders();
-    fetch('/api/machines')
-      .then(res => res.json())
-      .then(data => setMachines(data));
-  }, []);
+  const fetchOrders = async () => {
+    try {
+      const data = await getServiceOrders();
+      setOrders(data);
+    } catch (err) {
+      console.error('Erro ao buscar ordens:', err);
+    }
+  };
 
-  // Global timer to force re-render every second so durations update in real-time
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setTimer(t => t + 1);
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const fetchOrders = () => {
-    fetch('http://localhost:3333/api/service-orders')
-      .then(res => res.json())
-      .then(data => setOrders(data));
- };
+  const fetchPartsTools = async () => {
+    try {
+      const data = await getPartsTools();
+      setPartsTools(data);
+    } catch (err) {
+      console.error('Erro ao buscar peças/ferramentas:', err);
+    }
+  };
 
 
   const handleCreatePartTool = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('/api/parts-tools', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newPartTool),
-      });
-      if (res.ok) {
-        fetchPartsTools();
+      const result = await createPartTool(newPartTool);
+      if (result) {
+        await fetchPartsTools();
         setNewPartTool({ name: '', description: '', category: 'tool' });
-        alert('Item cadastrado!');
+        alert('✅ Item cadastrado!');
       } else {
-        alert('Erro ao cadastrar.');
+        alert('❌ Erro ao cadastrar.');
       }
     } catch (err) {
       console.error(err);
+      alert('❌ Erro ao cadastrar.');
     }
   };
 
   const handleDeletePartTool = async (id: number) => {
     if (!confirm('Remover este item?')) return;
     try {
-      await fetch(`/api/parts-tools/${id}`, { method: 'DELETE' });
-      fetchPartsTools();
+      const result = await deletePartTool(id);
+      if (result) {
+        await fetchPartsTools();
+      }
     } catch (err) {
       console.error(err);
     }
@@ -128,20 +138,40 @@ export default function ServiceOrders() {
     e.preventDefault();
     if (!user) return;
 
+    // Validações de campos obrigatórios
+    const camposObrigatorios = [
+      { campo: 'machine_id', label: 'Máquina' },
+      { campo: 'technician_name', label: 'Responsável' },
+      { campo: 'component', label: 'Componente com Falha' },
+      { campo: 'description', label: 'Descrição do Problema' }
+    ];
+
+    const campoFaltante = camposObrigatorios.find(c => !newOrder[c.campo as keyof typeof newOrder]);
+    
+    if (campoFaltante) {
+      alert(`⚠️ Campo obrigatório não preenchido:\n\n"${campoFaltante.label}"\n\nPor favor, preencha todos os campos obrigatórios.`);
+      return;
+    }
+
     try {
-      const res = await fetch('/api/service-orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...newOrder,
-          operator_id: user.id,
-          start_time: new Date().toISOString(),
-          used_parts_tools: newOrder.used_parts_tools
-        }),
+      // Encontrar máquina e operador
+      const machine = machines.find(m => m.id == newOrder.machine_id);
+      
+      const result = await createServiceOrder({
+        ...newOrder,
+        machine_id: parseInt(newOrder.machine_id),
+        machine_name: machine?.name || `Máquina ${newOrder.machine_id}`,
+        operator_id: user.id,
+        operator_name: user.name,
+        start_time: new Date().toISOString(),
+        status: 'open',
+        used_parts_tools: newOrder.used_parts_tools,
+        tools: newOrder.tools
       });
 
-      if (res.ok) {
-        fetchOrders();
+      if (result) {
+        alert('✅ Ordem de serviço criada com sucesso!');
+        await fetchOrders();
         setIsModalOpen(false);
         setNewOrder({
           machine_id: '',
@@ -149,11 +179,16 @@ export default function ServiceOrders() {
           technician_name: '',
           component: '',
           description: '',
-          used_parts_tools: []
+          used_parts_tools: [],
+          tools: [],
+          toolsInput: ''
         });
+      } else {
+        alert('❌ Erro ao criar ordem de serviço.');
       }
     } catch (err) {
-      console.error(err);
+      console.error('Erro ao criar ordem:', err);
+      alert('❌ Erro ao criar ordem de serviço.');
     }
   };
 
@@ -333,6 +368,21 @@ export default function ServiceOrders() {
               <h3 className="text-xl font-bold text-slate-900 mb-6">Abrir Ordem de Serviço</h3>
 
               <form onSubmit={handleCreateOrder} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Máquina *</label>
+                  <select
+                    required
+                    value={newOrder.machine_id}
+                    onChange={(e) => setNewOrder({ ...newOrder, machine_id: e.target.value })}
+                    className="w-full p-3 rounded-lg border border-slate-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none bg-white"
+                  >
+                    <option value="">Selecione uma máquina</option>
+                    {machines.map(machine => (
+                      <option key={machine.id} value={machine.id}>{machine.name}</option>
+                    ))}
+                  </select>
+                </div>
+
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">Peças/Ferramentas Utilizadas</label>
                   <div className="space-y-2 max-h-48 overflow-y-auto border border-slate-200 rounded-lg p-3">
@@ -561,7 +611,7 @@ export default function ServiceOrders() {
               className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6"
             >
               <h3 className="text-xl font-bold text-slate-900 mb-6">Finalizar Ordem de Serviço</h3>
-              <p className="text-slate-500 mb-4">Descreva o que foi realizado, ferramentas utilizadas e confirme o resultado.</p>
+              <p className="text-slate-500 mb-4">Descreva o que foi realizado (opcional).</p>
               <textarea
                 value={finalReport}
                 onChange={(e) => setFinalReport(e.target.value)}
@@ -580,19 +630,23 @@ export default function ServiceOrders() {
                   onClick={async () => {
                     if (!finishingOrderId) return;
                     try {
-                      const res = await fetch(`/api/service-orders/${finishingOrderId}/close`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ end_time: new Date().toISOString(), final_report: finalReport }),
-                      });
-                      if (res.ok) {
-                        fetchOrders();
+                      const result = await closeServiceOrder(
+                        finishingOrderId,
+                        new Date().toISOString(),
+                        finalReport || undefined
+                      );
+                      if (result) {
+                        alert('✅ Ordem de serviço finalizada com sucesso!');
+                        await fetchOrders();
                         setFinishModalOpen(false);
                         setFinalReport('');
                         setFinishingOrderId(null);
+                      } else {
+                        alert('❌ Erro ao finalizar ordem de serviço.');
                       }
                     } catch (err) {
                       console.error(err);
+                      alert('❌ Erro ao finalizar ordem de serviço.');
                     }
                   }}
                   className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-medium py-3 rounded-xl shadow-lg shadow-orange-500/20 transition-colors"
@@ -617,9 +671,10 @@ export default function ServiceOrders() {
             >
               <h3 className="text-xl font-bold text-slate-900 mb-6">Editar Relatório Final</h3>
               <p className="text-slate-500 mb-4">Atualize as informações da OS #{editingOrder.id.toString().padStart(4, '0')}</p>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Componente</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Componente *</label>
               <input
                 type="text"
+                required
                 value={editComponent}
                 onChange={(e) => setEditComponent(e.target.value)}
                 className="w-full p-3 rounded-lg border border-slate-200 mb-3"
@@ -637,24 +692,38 @@ export default function ServiceOrders() {
                   </span>
                 ))}
               </div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Relatório Final</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Relatório Final (opcional)</label>
               <textarea value={editReport} onChange={e => setEditReport(e.target.value)} rows={5} className="w-full p-3 rounded-lg border border-slate-200 mb-4" />
               <div className="flex gap-3">
                 <button onClick={() => setEditReportModalOpen(false)} className="flex-1 bg-slate-100 hover:bg-slate-200 py-3 rounded-lg">Cancelar</button>
                 <button onClick={async () => {
                   if (!editingOrder) return;
+                  
+                  // Validar campo obrigatório
+                  if (!editComponent.trim()) {
+                    alert('⚠️ Campo obrigatório não preenchido:\n\n"Componente"\n\nPor favor, preencha todos os campos obrigatórios.');
+                    return;
+                  }
+                  
                   try {
-                    const res = await fetch(`http://localhost:3333/api/service-orders/${editingOrder.id}`, {
-                      method: 'PUT',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ final_report: editReport, tools: editTools, component: editComponent }),
+                    const result = await updateServiceOrder(editingOrder.id, {
+                      final_report: editReport,
+                      tools: editTools,
+                      component: editComponent
                     });
-                    if (res.ok) {
-                      fetchOrders();
+                    
+                    if (result) {
+                      alert('✅ Relatório atualizado com sucesso!');
+                      await fetchOrders();
                       setEditReportModalOpen(false);
                       setEditingOrder(null);
+                    } else {
+                      alert('❌ Erro ao atualizar relatório.');
                     }
-                  } catch (err) { console.error(err); }
+                  } catch (err) { 
+                    console.error(err);
+                    alert('❌ Erro ao atualizar relatório.');
+                  }
                 }} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-lg">Salvar</button>
               </div>
             </motion.div>

@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 import Manuals from './pages/Manuals';
 import Checklist from './pages/Checklist';
 import ServiceOrders from './pages/ServiceOrders';
+import History from './pages/History';
 import UserManagement from './pages/UserManagement';
 
 export default function App() {
@@ -20,6 +21,7 @@ export default function App() {
             <Route path="/manuals" element={<Manuals />} />
             <Route path="/checklist" element={<Checklist />} />
             <Route path="/service-orders" element={<ServiceOrders />} />
+            <Route path="/history" element={<History />} />
             <Route path="/users" element={<UserManagement />} />
             {/* Other routes will be added here */}
           </Route>

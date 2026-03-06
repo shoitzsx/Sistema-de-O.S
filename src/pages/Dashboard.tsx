@@ -1,6 +1,6 @@
 import { useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
-import { BookOpen, ClipboardCheck, Wrench, Users } from 'lucide-react';
+import { BookOpen, ClipboardCheck, Wrench, Users, History } from 'lucide-react';
 import Layout from '../components/Layout';
 import { motion } from 'motion/react';
 
@@ -31,6 +31,14 @@ export default function Dashboard() {
       icon: Wrench,
       color: 'bg-orange-500',
       path: '/service-orders'
+    },
+    {
+      id: 4,
+      name: 'Histórico de O.S',
+      description: 'Consulte todas as ordens de serviço criadas.',
+      icon: History,
+      color: 'bg-indigo-500',
+      path: '/history'
     }
   ];
 

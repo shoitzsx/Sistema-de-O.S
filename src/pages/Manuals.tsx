@@ -141,7 +141,6 @@ export default function Manuals() {
       alert('Erro ao atualizar checklist.');
     }
   };
-  };
 
   const handleUploadManual = async (e: React.ChangeEvent<HTMLInputElement>, machineId: number) => {
     if (!e.target.files || e.target.files.length === 0) return;

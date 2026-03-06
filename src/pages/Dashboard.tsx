@@ -1,6 +1,6 @@
 import { useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
-import { Wrench, History } from 'lucide-react';
+import { Wrench, History, BookOpen, CheckSquare, Users } from 'lucide-react';
 import Layout from '../components/Layout';
 import { motion } from 'motion/react';
 
@@ -8,6 +8,22 @@ export default function Dashboard() {
   const { user } = useAuth();
 
   const modules = [
+    {
+      id: 1,
+      name: 'Manuais Técnicos',
+      description: 'Gerenciar manuais e documentação de equipamentos.',
+      icon: BookOpen,
+      color: 'bg-blue-500',
+      path: '/manuals'
+    },
+    {
+      id: 2,
+      name: 'Checklist Mensal',
+      description: 'Realizar checklists mensais de equipamentos.',
+      icon: CheckSquare,
+      color: 'bg-green-500',
+      path: '/checklist'
+    },
     {
       id: 3,
       name: 'Ordens de Serviço',
@@ -23,6 +39,14 @@ export default function Dashboard() {
       icon: History,
       color: 'bg-indigo-500',
       path: '/history'
+    },
+    {
+      id: 5,
+      name: 'Gerenciar Usuários',
+      description: 'Criar, editar e remover usuários do sistema.',
+      icon: Users,
+      color: 'bg-purple-500',
+      path: '/users'
     }
   ];
 

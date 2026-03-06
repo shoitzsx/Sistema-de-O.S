@@ -1,22 +1,18 @@
 {
   "buildCommand": "npm run build",
-  "devCommand": "npm run dev",
   "outputDirectory": "dist",
   "framework": "vite",
-
   "env": [
     "VITE_SUPABASE_URL",
     "VITE_SUPABASE_ANON_KEY"
   ],
-
-  "regions": ["sao1"],
-
-  "functions": {
-    "api/**/*.ts": {
-      "memory": 3008,
-      "maxDuration": 60
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
-  },
+  ]
+},
 
   "rewrites": [
     {

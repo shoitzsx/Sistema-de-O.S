@@ -1,6 +1,6 @@
 import { useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
-import { BookOpen, ClipboardCheck, Wrench, Users, History } from 'lucide-react';
+import { Wrench, History } from 'lucide-react';
 import Layout from '../components/Layout';
 import { motion } from 'motion/react';
 
@@ -9,25 +9,9 @@ export default function Dashboard() {
 
   const modules = [
     {
-      id: 1,
-      name: 'Manuais Técnicos',
-      description: 'Biblioteca de manuais de operação e manutenção.',
-      icon: BookOpen,
-      color: 'bg-blue-500',
-      path: '/manuals'
-    },
-    {
-      id: 2,
-      name: 'Checklist Mensal',
-      description: 'Inspeções periódicas e validação de equipamentos.',
-      icon: ClipboardCheck,
-      color: 'bg-emerald-500',
-      path: '/checklist'
-    },
-    {
       id: 3,
-      name: 'Manutenção Corretiva',
-      description: 'Ordens de serviço e registro de horas.',
+      name: 'Ordens de Serviço',
+      description: 'Criar e gerenciar ordens de serviço e manutenção.',
       icon: Wrench,
       color: 'bg-orange-500',
       path: '/service-orders'
@@ -72,29 +56,6 @@ export default function Dashboard() {
             </motion.div>
           </Link>
         ))}
-
-        {user?.role === 'admin' && (
-          <Link to="/users">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 }}
-              className="bg-white rounded-2xl p-6 shadow-sm hover:shadow-md transition-all border border-slate-100 h-full flex flex-col"
-            >
-              <div className="bg-purple-500 w-14 h-14 rounded-xl flex items-center justify-center text-white mb-6 shadow-lg shadow-opacity-20">
-                <Users size={28} />
-              </div>
-              <h3 className="text-xl font-bold text-slate-900 mb-2">Gestão de Usuários</h3>
-              <p className="text-slate-500 text-sm leading-relaxed flex-1">
-                Criar perfis, definir senhas e permissões de acesso.
-              </p>
-              <div className="mt-6 flex items-center text-sm font-medium text-slate-900 group">
-                Gerenciar
-                <span className="ml-2 group-hover:translate-x-1 transition-transform">&rarr;</span>
-              </div>
-            </motion.div>
-          </Link>
-        )}
       </div>
     </Layout>
   );

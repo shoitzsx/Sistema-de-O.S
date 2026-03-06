@@ -196,19 +196,16 @@ export default function ServiceOrders() {
     if (!confirm('Deseja realmente finalizar esta ordem de serviço?')) return;
 
     try {
-      const res = await fetch(`/api/service-orders/${id}/close`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          end_time: new Date().toISOString()
-        }),
-      });
-
-      if (res.ok) {
-        fetchOrders();
+      const success = await closeServiceOrder(id, new Date().toISOString());
+      if (success) {
+        await fetchOrders();
+        alert('✅ Ordem de serviço finalizada com sucesso!');
+      } else {
+        alert('❌ Erro ao finalizar ordem de serviço.');
       }
     } catch (err) {
-      console.error(err);
+      console.error('Erro ao finalizar ordem:', err);
+      alert('❌ Erro ao finalizar ordem de serviço.');
     }
   };
 

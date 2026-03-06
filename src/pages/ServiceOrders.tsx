@@ -48,7 +48,6 @@ export default function ServiceOrders() {
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
   const [machines, setMachines] = useState<Machine[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [timer, setTimer] = useState(0);
   const [finishModalOpen, setFinishModalOpen] = useState(false);
   const [finishingOrderId, setFinishingOrderId] = useState<number | null>(null);
   const [finalReport, setFinalReport] = useState('');
@@ -149,7 +148,7 @@ export default function ServiceOrders() {
     const campoFaltante = camposObrigatorios.find(c => !newOrder[c.campo as keyof typeof newOrder]);
     
     if (campoFaltante) {
-      alert(`⚠️ Campo obrigatório não preenchido:\n\n"${campoFaltante.label}"\n\nPor favor, preencha todos os campos obrigatórios.`);
+      toast.error(`Campo obrigatório: ${campoFaltante.label}`);
       return;
     }
 
@@ -173,7 +172,7 @@ export default function ServiceOrders() {
       });
 
       if (result) {
-        alert('✅ Ordem de serviço criada com sucesso!');
+        toast.success('Ordem de serviço criada com sucesso!');
         await fetchOrders();
         setIsModalOpen(false);
         setNewOrder({
@@ -187,16 +186,15 @@ export default function ServiceOrders() {
           toolsInput: ''
         });
       } else {
-        alert('❌ Erro ao criar ordem de serviço.');
+        toast.error('Erro ao criar ordem de serviço.');
       }
     } catch (err) {
       console.error('Erro ao criar ordem:', err);
-      alert('❌ Erro ao criar ordem de serviço.');
+      toast.error('Erro ao criar ordem de serviço.');
     }
   };
 
   const handleFinishOrder = async (id: number) => {
-    if (!confirm('Deseja realmente finalizar esta ordem de serviço?')) return;
 
     try {
       const success = await closeServiceOrder(id, new Date().toISOString());

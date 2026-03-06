@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
-import { Trash2, UserPlus, Shield, CheckSquare, Square } from 'lucide-react';
-import { motion } from 'motion/react';
+import { Trash2, UserPlus, Shield, CheckSquare, Square, Edit, Eye, EyeOff, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { toast } from 'react-toastify';
 import { getUsers, createUser, updateUser, deleteUser } from '../lib/supabaseApi';
 
 interface User {
@@ -14,19 +15,23 @@ interface User {
 }
 
 const MODULES = [
-  { id: 1, name: 'Manuais Técnicos' },
-  { id: 2, name: 'Checklist Mensal' },
-  { id: 3, name: 'Manutenção Corretiva' }
+  { id: 1, name: 'Manuais Técnicos', icon: '📚' },
+  { id: 2, name: 'Checklist Mensal', icon: '✅' },
+  { id: 3, name: 'Manutenção Corretiva', icon: '🔧' },
+  { id: 4, name: 'Histórico de O.S', icon: '📋' },
+  { id: 5, name: 'Gerenciar Usuários', icon: '👥' }
 ];
 
 export default function UserManagement() {
   const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [newUser, setNewUser] = useState({
     name: '',
     username: '',
     password: '',
-    role: 'operator',
+    role: 'operator' as 'admin' | 'operator',
     allowed_modules: [] as number[]
   });
 
@@ -43,6 +48,12 @@ export default function UserManagement() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!newUser.name.trim() || !newUser.username.trim() || !newUser.password.trim()) {
+      toast.error('Preencha todos os campos obrigatórios');
+      return;
+    }
+
     try {
       let result;
       
@@ -55,13 +66,14 @@ export default function UserManagement() {
       if (result) {
         loadUsers();
         resetForm();
-        alert(editingId ? 'Usuário atualizado!' : 'Usuário criado!');
+        setIsModalOpen(false);
+        toast.success(editingId ? 'Usuário atualizado com sucesso!' : 'Usuário criado com sucesso!');
       } else {
-        alert('Erro ao salvar usuário');
+        toast.error('Erro ao salvar usuário');
       }
     } catch (err) {
       console.error(err);
-      alert('Erro ao salvar usuário');
+      toast.error('Erro ao salvar usuário');
     }
   };
 
@@ -70,10 +82,12 @@ export default function UserManagement() {
     setNewUser({
       name: user.name,
       username: user.username,
-      password: '', // Don't fill password
+      password: '',
       role: user.role,
       allowed_modules: user.allowed_modules
     });
+    setShowPassword(false);
+    setIsModalOpen(true);
   };
 
   const resetForm = () => {
@@ -85,21 +99,25 @@ export default function UserManagement() {
       role: 'operator',
       allowed_modules: []
     });
+    setShowPassword(false);
   };
 
   const handleDeleteUser = async (id: number) => {
-    if (!confirm('Tem certeza que deseja excluir este usuário?')) return;
+    if (!confirm('⚠️ Tem certeza que deseja REMOVER este usuário? Esta ação é irreversível.')) {
+      return;
+    }
     
     try {
       const success = await deleteUser(id);
       if (success) {
         loadUsers();
+        toast.success('Usuário removido com sucesso!');
       } else {
-        alert('Erro ao excluir usuário. Verifique se existem registros associados.');
+        toast.error('Erro ao excluir usuário. Verifique se existem registros associados.');
       }
     } catch (err) {
       console.error(err);
-      alert('Erro ao excluir usuário.');
+      toast.error('Erro ao excluir usuário.');
     }
   };
 
@@ -125,148 +143,227 @@ export default function UserManagement() {
 
   return (
     <Layout>
-      <div className="max-w-6xl mx-auto">
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold text-slate-900">Gestão de Usuários</h2>
-          <p className="text-slate-500">Crie perfis e defina permissões de acesso</p>
+      <div className="max-w-7xl mx-auto">
+        <div className="mb-8 flex justify-between items-center">
+          <div>
+            <h2 className="text-3xl font-bold text-slate-900">Gestão de Usuários</h2>
+            <p className="text-slate-500 mt-1">Crie e gerencie usuários do sistema</p>
+          </div>
+          <button
+            onClick={() => {
+              resetForm();
+              setIsModalOpen(true);
+            }}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 px-6 rounded-xl shadow-lg shadow-emerald-600/20 flex items-center gap-2 transition-all"
+          >
+            <UserPlus size={20} /> Novo Usuário
+          </button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Form Section */}
-          <div className="lg:col-span-1">
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 sticky top-8">
-              <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
-                <UserPlus size={20} className="text-emerald-600" />
-                {editingId ? 'Editar Usuário' : 'Novo Usuário'}
-              </h3>
-              
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Nome Completo</label>
-                  <input
-                    type="text"
-                    required
-                    value={newUser.name}
-                    onChange={e => setNewUser({ ...newUser, name: e.target.value })}
-                    className="w-full p-2.5 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-200 outline-none"
-                    placeholder="Ex: João Silva"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Usuário (Login)</label>
-                  <input
-                    type="text"
-                    required
-                    value={newUser.username}
-                    onChange={e => setNewUser({ ...newUser, username: e.target.value })}
-                    className="w-full p-2.5 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-200 outline-none"
-                    placeholder="Ex: joao"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Senha</label>
-                  <input
-                    type="password"
-                    required
-                    value={newUser.password}
-                    onChange={e => setNewUser({ ...newUser, password: e.target.value })}
-                    className="w-full p-2.5 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-200 outline-none"
-                    placeholder="******"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Função</label>
-                  <select
-                    value={newUser.role}
-                    onChange={e => setNewUser({ ...newUser, role: e.target.value as 'admin' | 'operator' })}
-                    className="w-full p-2.5 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-200 outline-none bg-white"
-                  >
-                    <option value="operator">Operador</option>
-                    <option value="admin">Administrador (PCM)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Módulos Permitidos</label>
-                  <div className="space-y-2">
-                    {MODULES.map(module => (
-                      <button
-                        key={module.id}
-                        type="button"
-                        onClick={() => toggleModule(module.id)}
-                        className="flex items-center gap-3 w-full p-2 rounded-lg hover:bg-slate-50 transition-colors text-left"
-                      >
-                        {newUser.allowed_modules.includes(module.id) ? (
-                          <CheckSquare size={20} className="text-emerald-600" />
-                        ) : (
-                          <Square size={20} className="text-slate-300" />
-                        )}
-                        <span className="text-sm text-slate-700">{module.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-3 rounded-xl shadow-lg shadow-emerald-600/20 transition-all mt-4"
-                >
-                  Criar Perfil
-                </button>
-              </form>
+        {/* Users List */}
+        <div className="grid gap-4">
+          {users.length === 0 ? (
+            <div className="text-center py-12 bg-white rounded-2xl border border-slate-100">
+              <Shield size={48} className="mx-auto text-slate-300 mb-4" />
+              <p className="text-slate-500">Nenhum usuário cadastrado</p>
             </div>
-          </div>
-
-          {/* List Section */}
-          <div className="lg:col-span-2">
-            <div className="grid gap-4">
-              {users.map((u) => (
-                <motion.div
-                  key={u.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold ${u.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-700'}`}>
-                      {u.name.charAt(0)}
+          ) : (
+            users.map((u) => (
+              <motion.div
+                key={u.id}
+                layout
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="bg-white p-5 rounded-xl border border-slate-100 hover:shadow-md transition-all"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className={`px-3 py-1 text-xs font-semibold rounded-full ${
+                        u.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
+                      }`}>
+                        {u.role === 'admin' ? '🔐 Admin' : '👤 Operador'}
+                      </div>
+                      <h3 className="text-lg font-bold text-slate-900">{u.name}</h3>
                     </div>
-                    <div>
-                      <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                        {u.name}
-                        {u.role === 'admin' && <Shield size={14} className="text-purple-600" />}
-                      </h3>
-                      <p className="text-sm text-slate-500">@{u.username}</p>
-                      <div className="flex gap-2 mt-2">
-                        {u.allowed_modules.map(mid => {
-                          const m = MODULES.find(mod => mod.id === mid);
-                          return m ? (
-                            <span key={mid} className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-md">
-                              {m.name}
+                    <p className="text-sm text-slate-500 mb-3">@{u.username}</p>
+                    
+                    <div className="flex flex-wrap gap-2">
+                      {u.allowed_modules.length === 0 ? (
+                        <span className="text-xs text-slate-400">Nenhum módulo permitido</span>
+                      ) : (
+                        u.allowed_modules.map(moduleId => {
+                          const mod = MODULES.find(m => m.id === moduleId);
+                          return mod ? (
+                            <span key={moduleId} className="text-xs bg-slate-100 text-slate-700 px-2.5 py-1 rounded-full">
+                              {mod.icon} {mod.name}
                             </span>
                           ) : null;
-                        })}
-                      </div>
+                        })
+                      )}
                     </div>
                   </div>
-
-                  {u.username !== 'admin' && (
+                  
+                  <div className="flex gap-2 ml-4">
+                    <button
+                      onClick={() => handleEdit(u)}
+                      className="p-2.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      title="Editar usuário"
+                    >
+                      <Edit size={20} />
+                    </button>
                     <button
                       onClick={() => handleDeleteUser(u.id)}
-                      className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                      title="Excluir Usuário"
+                      className="p-2.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Deletar usuário"
                     >
                       <Trash2 size={20} />
                     </button>
-                  )}
-                </motion.div>
-              ))}
-            </div>
-          </div>
+                  </div>
+                </div>
+              </motion.div>
+            ))
+          )}
         </div>
+
+        {/* Modal Form */}
+        <AnimatePresence>
+          {isModalOpen && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                setIsModalOpen(false);
+                resetForm();
+              }}
+              className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                onClick={e => e.stopPropagation()}
+                className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6"
+              >
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-2xl font-bold text-slate-900">
+                    {editingId ? 'Editar Usuário' : 'Novo Usuário'}
+                  </h3>
+                  <button
+                    onClick={() => {
+                      setIsModalOpen(false);
+                      resetForm();
+                    }}
+                    className="p-1 hover:bg-slate-100 rounded-lg transition-colors"
+                  >
+                    <X size={24} />
+                  </button>
+                </div>
+
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Nome Completo *</label>
+                    <input
+                      type="text"
+                      required
+                      value={newUser.name}
+                      onChange={e => setNewUser({ ...newUser, name: e.target.value })}
+                      className="w-full p-3 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition"
+                      placeholder="João Silva"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Usuário (Login) *</label>
+                    <input
+                      type="text"
+                      required
+                      value={newUser.username}
+                      onChange={e => setNewUser({ ...newUser, username: e.target.value })}
+                      className="w-full p-3 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition"
+                      placeholder="joao"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Senha *</label>
+                    <div className="relative">
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        required
+                        value={newUser.password}
+                        onChange={e => setNewUser({ ...newUser, password: e.target.value })}
+                        className="w-full p-3 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition pr-10"
+                        placeholder="••••••••"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-3 text-slate-500 hover:text-slate-700"
+                      >
+                        {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Função *</label>
+                    <select
+                      value={newUser.role}
+                      onChange={e => setNewUser({ ...newUser, role: e.target.value as 'admin' | 'operator' })}
+                      className="w-full p-3 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition bg-white"
+                    >
+                      <option value="operator">👤 Operador</option>
+                      <option value="admin">🔐 Administrador</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-3">Módulos Permitidos</label>
+                    <div className="space-y-2 bg-slate-50 p-4 rounded-lg max-h-64 overflow-y-auto">
+                      {MODULES.map(module => (
+                        <button
+                          key={module.id}
+                          type="button"
+                          onClick={() => toggleModule(module.id)}
+                          className="flex items-center gap-3 w-full p-3 rounded-lg hover:bg-white transition-colors text-left"
+                        >
+                          {newUser.allowed_modules.includes(module.id) ? (
+                            <CheckSquare size={20} className="text-emerald-600 flex-shrink-0" />
+                          ) : (
+                            <Square size={20} className="text-slate-300 flex-shrink-0" />
+                          )}
+                          <span className="text-sm text-slate-700">{module.icon} {module.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 pt-4">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsModalOpen(false);
+                        resetForm();
+                      }}
+                      className="flex-1 px-4 py-3 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 font-medium transition"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      className="flex-1 px-4 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium transition shadow-lg shadow-emerald-600/20"
+                    >
+                      {editingId ? 'Atualizar' : 'Criar'}
+                    </button>
+                  </div>
+                </form>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </Layout>
   );

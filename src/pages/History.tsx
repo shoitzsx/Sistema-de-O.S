@@ -25,7 +25,12 @@ interface ServiceOrder {
 
 export default function History() {
   const { user } = useAuth();
-  const isAdmin = String(user?.role || '').toLowerCase() === 'admin';
+  const normalizedRole = String(user?.role || '').trim().toLowerCase();
+  const normalizedUsername = String(user?.username || '').trim().toLowerCase();
+  const isAdmin =
+    normalizedRole === 'admin' ||
+    normalizedRole === 'administrador' ||
+    normalizedUsername === 'admin';
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
   const [filteredOrders, setFilteredOrders] = useState<ServiceOrder[]>([]);
   const [filterStatus, setFilterStatus] = useState<'all' | 'open' | 'closed'>('closed');

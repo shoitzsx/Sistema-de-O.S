@@ -47,7 +47,12 @@ interface Machine {
 
 export default function ServiceOrders() {
   const { user } = useAuth();
-  const isAdmin = String(user?.role || '').toLowerCase() === 'admin';
+  const normalizedRole = String(user?.role || '').trim().toLowerCase();
+  const normalizedUsername = String(user?.username || '').trim().toLowerCase();
+  const isAdmin =
+    normalizedRole === 'admin' ||
+    normalizedRole === 'administrador' ||
+    normalizedUsername === 'admin';
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
   const [machines, setMachines] = useState<Machine[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);

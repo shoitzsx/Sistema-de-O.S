@@ -322,6 +322,31 @@ export async function deleteAllServiceOrders(): Promise<boolean> {
 
 export type ServiceOrderDeleteScope = 'all' | 'open' | 'closed';
 
+export async function verifyUserCredentials(
+  username: string,
+  password: string,
+  requiredRole?: 'admin' | 'operator'
+): Promise<boolean> {
+  try {
+    let query = supabase
+      .from('users')
+      .select('id')
+      .eq('username', username)
+      .eq('password', password);
+
+    if (requiredRole) {
+      query = query.eq('role', requiredRole);
+    }
+
+    const { data, error } = await query.limit(1);
+    if (error) throw error;
+    return !!data && data.length > 0;
+  } catch (err) {
+    console.error('Erro ao validar credenciais do usuário:', err);
+    return false;
+  }
+}
+
 export async function deleteServiceOrdersByScope(scope: ServiceOrderDeleteScope): Promise<boolean> {
   try {
     let query = supabase.from('service_orders').delete();
@@ -341,6 +366,23 @@ export async function deleteServiceOrdersByScope(scope: ServiceOrderDeleteScope)
     return true;
   } catch (err) {
     console.error('Erro ao deletar ordens de serviço por escopo:', err);
+    return false;
+  }
+}
+
+export async function deleteServiceOrdersByIds(ids: number[]): Promise<boolean> {
+  try {
+    if (!ids.length) return true;
+
+    const { error } = await supabase
+      .from('service_orders')
+      .delete()
+      .in('id', ids);
+
+    if (error) throw error;
+    return true;
+  } catch (err) {
+    console.error('Erro ao deletar ordens de serviço por IDs:', err);
     return false;
   }
 }

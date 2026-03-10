@@ -12,7 +12,8 @@ import {
   updateServiceOrder, 
   closeServiceOrder,
   deleteServiceOrdersByScope,
-  ServiceOrderDeleteScope,
+  deleteServiceOrdersByIds,
+  verifyUserCredentials,
   createPartTool,
   deletePartTool
 } from '../lib/supabaseApi';
@@ -72,7 +73,12 @@ export default function ServiceOrders() {
   const [timerKey, setTimerKey] = useState<number>(0);
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
   const [isDeletingAllOrders, setIsDeletingAllOrders] = useState(false);
-  const [deleteScope, setDeleteScope] = useState<ServiceOrderDeleteScope>('all');
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [deleteMode, setDeleteMode] = useState<'all' | 'specific'>('all');
+  const [selectedOrderIds, setSelectedOrderIds] = useState<number[]>([]);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
   const [newOrder, setNewOrder] = useState({
   machine_id: '',
   maintenance_type: 'corretiva' as 'preventiva' | 'corretiva',
@@ -256,28 +262,61 @@ export default function ServiceOrders() {
     }
   };
 
-  const handleDeleteAllOrders = async () => {
-    if (!isAdmin) return;
+  const openDeleteModal = () => {
+    setDeleteMode('all');
+    setSelectedOrderIds([]);
+    setDeleteReason('');
+    setAdminPassword('');
+    setIsDeleteConfirmOpen(false);
+    setIsDeleteModalOpen(true);
+  };
 
-    const labelByScope: Record<ServiceOrderDeleteScope, string> = {
-      all: 'TODAS as ordens de serviço',
-      open: 'as ordens EM ANDAMENTO',
-      closed: 'as ordens FINALIZADAS'
-    };
+  const handleDeleteContinue = () => {
+    if (!deleteReason.trim()) {
+      toast.error('❌ Informe o motivo da exclusão.');
+      return;
+    }
 
-    if (!confirm(`⚠️ Deseja realmente excluir ${labelByScope[deleteScope]}? Esta ação é irreversível.`)) return;
+    if (!adminPassword.trim()) {
+      toast.error('❌ Informe a senha de admin.');
+      return;
+    }
+
+    if (deleteMode === 'specific' && selectedOrderIds.length === 0) {
+      toast.error('❌ Selecione pelo menos uma O.S para excluir.');
+      return;
+    }
+
+    setIsDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteOrders = async () => {
+    if (!isAdmin || !user?.username) return;
 
     try {
       setIsDeletingAllOrders(true);
-      const success = await deleteServiceOrdersByScope(deleteScope);
+
+      const validCredentials = await verifyUserCredentials(user.username, adminPassword, 'admin');
+      if (!validCredentials) {
+        toast.error('❌ Senha de admin inválida.');
+        return;
+      }
+
+      const success =
+        deleteMode === 'all'
+          ? await deleteServiceOrdersByScope('all')
+          : await deleteServiceOrdersByIds(selectedOrderIds);
+
       if (success) {
         toast.success('✅ Ordens de serviço excluídas com sucesso.');
         await fetchOrders();
+        setIsDeleteModalOpen(false);
+        setIsDeleteConfirmOpen(false);
       } else {
         toast.error('❌ Não foi possível excluir as ordens selecionadas.');
       }
     } catch (err) {
-      console.error('Erro ao excluir todas as ordens:', err);
+      console.error('Erro ao excluir ordens:', err);
       toast.error('❌ Erro ao excluir as ordens selecionadas.');
     } finally {
       setIsDeletingAllOrders(false);
@@ -326,24 +365,12 @@ export default function ServiceOrders() {
         </div>
         <div className="flex items-center gap-3">
           {isAdmin && (
-            <>
-              <select
-                value={deleteScope}
-                onChange={(e) => setDeleteScope(e.target.value as ServiceOrderDeleteScope)}
-                className="bg-white border border-slate-300 text-slate-700 font-medium py-2.5 px-3 rounded-xl"
-              >
-                <option value="all">Todas</option>
-                <option value="open">Em andamento</option>
-                <option value="closed">Finalizadas</option>
-              </select>
-              <button
-                onClick={handleDeleteAllOrders}
-                disabled={isDeletingAllOrders}
-                className="bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white font-medium py-2.5 px-5 rounded-xl shadow-lg shadow-red-600/20 flex items-center gap-2 transition-all"
-              >
-                {isDeletingAllOrders ? 'Excluindo...' : 'Excluir O.S Selecionadas'}
-              </button>
-            </>
+            <button
+              onClick={openDeleteModal}
+              className="bg-red-600 hover:bg-red-700 text-white font-medium py-2.5 px-5 rounded-xl shadow-lg shadow-red-600/20 flex items-center gap-2 transition-all"
+            >
+              Excluir O.S
+            </button>
           )}
           {isAdmin && (
             <button
@@ -451,6 +478,148 @@ export default function ServiceOrders() {
           </div>
         )}
       </div>
+
+      <AnimatePresence>
+        {isDeleteModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-6"
+            >
+              <h3 className="text-xl font-bold text-slate-900 mb-2">Excluir Ordens de Serviço</h3>
+              <p className="text-slate-500 mb-5">Selecione como deseja excluir e informe motivo + senha de admin.</p>
+
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <label className="border rounded-xl p-3 flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="deleteMode"
+                      checked={deleteMode === 'all'}
+                      onChange={() => setDeleteMode('all')}
+                    />
+                    <span className="font-medium text-slate-700">Apagar todas as O.S</span>
+                  </label>
+                  <label className="border rounded-xl p-3 flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="deleteMode"
+                      checked={deleteMode === 'specific'}
+                      onChange={() => setDeleteMode('specific')}
+                    />
+                    <span className="font-medium text-slate-700">Escolher O.S específicas</span>
+                  </label>
+                </div>
+
+                {deleteMode === 'specific' && (
+                  <div className="border border-slate-200 rounded-xl p-3 max-h-52 overflow-y-auto">
+                    {orders.length === 0 ? (
+                      <p className="text-sm text-slate-500">Não há O.S para selecionar.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {orders.map(order => (
+                          <label key={order.id} className="flex items-center justify-between gap-3 p-2 rounded-lg hover:bg-slate-50 cursor-pointer">
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="checkbox"
+                                checked={selectedOrderIds.includes(order.id)}
+                                onChange={(e) => {
+                                  setSelectedOrderIds(prev =>
+                                    e.target.checked
+                                      ? [...prev, order.id]
+                                      : prev.filter(id => id !== order.id)
+                                  );
+                                }}
+                              />
+                              <span className="text-sm text-slate-700">
+                                #{order.id.toString().padStart(4, '0')} - {order.machine_name}
+                              </span>
+                            </div>
+                            <span className={`text-xs px-2 py-1 rounded-full ${order.status === 'open' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                              {order.status === 'open' ? 'Em andamento' : 'Finalizada'}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Motivo da exclusão (obrigatório)</label>
+                  <textarea
+                    value={deleteReason}
+                    onChange={(e) => setDeleteReason(e.target.value)}
+                    rows={3}
+                    className="w-full p-3 rounded-lg border border-slate-200 focus:border-red-500 focus:ring-2 focus:ring-red-200 outline-none"
+                    placeholder="Ex: Limpeza de base após teste interno..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Senha do admin</label>
+                  <input
+                    type="password"
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    className="w-full p-3 rounded-lg border border-slate-200 focus:border-red-500 focus:ring-2 focus:ring-red-200 outline-none"
+                    placeholder="Digite a senha do admin"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => {
+                    setIsDeleteModalOpen(false);
+                    setIsDeleteConfirmOpen(false);
+                  }}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-3 rounded-xl transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDeleteContinue}
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white font-medium py-3 rounded-xl transition-colors"
+                >
+                  Continuar
+                </button>
+              </div>
+
+              {isDeleteConfirmOpen && (
+                <div className="mt-5 border border-red-200 bg-red-50 rounded-xl p-4">
+                  <p className="text-red-900 font-semibold">Tem certeza que deseja apagar?</p>
+                  <p className="text-red-700 text-sm mt-1">
+                    {deleteMode === 'all'
+                      ? 'Todas as ordens de serviço serão excluídas permanentemente.'
+                      : `${selectedOrderIds.length} ordem(ns) selecionada(s) serão excluídas permanentemente.`}
+                  </p>
+                  <p className="text-red-700 text-sm mt-2">
+                    <span className="font-semibold">Motivo:</span> {deleteReason.trim()}
+                  </p>
+                  <div className="flex gap-2 mt-4">
+                    <button
+                      onClick={() => setIsDeleteConfirmOpen(false)}
+                      className="flex-1 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 py-2.5 rounded-lg"
+                    >
+                      Voltar
+                    </button>
+                    <button
+                      onClick={handleDeleteOrders}
+                      disabled={isDeletingAllOrders}
+                      className="flex-1 bg-red-700 hover:bg-red-800 disabled:opacity-60 text-white py-2.5 rounded-lg"
+                    >
+                      {isDeletingAllOrders ? 'Apagando...' : 'Sim, apagar agora'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {isModalOpen && (

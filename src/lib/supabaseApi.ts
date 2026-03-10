@@ -317,17 +317,30 @@ export async function closeServiceOrder(id: number, endTime: string, finalReport
 }
 
 export async function deleteAllServiceOrders(): Promise<boolean> {
+  return deleteServiceOrdersByScope('all');
+}
+
+export type ServiceOrderDeleteScope = 'all' | 'open' | 'closed';
+
+export async function deleteServiceOrdersByScope(scope: ServiceOrderDeleteScope): Promise<boolean> {
   try {
-    // Supabase delete requires a filter; this targets all persisted rows.
-    const { error } = await supabase
-      .from('service_orders')
-      .delete()
-      .gte('id', 0);
+    let query = supabase.from('service_orders').delete();
+
+    if (scope === 'open') {
+      query = query.eq('status', 'open');
+    } else if (scope === 'closed') {
+      query = query.eq('status', 'closed');
+    } else {
+      // Supabase delete requires a filter; this safely targets persisted statuses.
+      query = query.in('status', ['open', 'closed']);
+    }
+
+    const { error } = await query;
 
     if (error) throw error;
     return true;
   } catch (err) {
-    console.error('Erro ao deletar todas as ordens de serviço:', err);
+    console.error('Erro ao deletar ordens de serviço por escopo:', err);
     return false;
   }
 }

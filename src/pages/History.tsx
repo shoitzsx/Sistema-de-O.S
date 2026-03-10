@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { Clock, AlertTriangle, CheckCircle, FileText, Download } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'react-toastify';
-import { getServiceOrders, deleteAllServiceOrders } from '../lib/supabaseApi';
+import { getServiceOrders, deleteServiceOrdersByScope, ServiceOrderDeleteScope } from '../lib/supabaseApi';
 
 interface ServiceOrder {
   id: number;
@@ -37,6 +37,7 @@ export default function History() {
   const [filterType, setFilterType] = useState<'all' | 'preventiva' | 'corretiva'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [isDeletingAllOrders, setIsDeletingAllOrders] = useState(false);
+  const [deleteScope, setDeleteScope] = useState<ServiceOrderDeleteScope>('all');
 
   useEffect(() => {
     fetchOrders();
@@ -143,20 +144,27 @@ export default function History() {
 
   const handleDeleteAllOrders = async () => {
     if (!isAdmin) return;
-    if (!confirm('⚠️ Deseja realmente excluir TODAS as ordens de serviço? Esta ação é irreversível.')) return;
+
+    const labelByScope: Record<ServiceOrderDeleteScope, string> = {
+      all: 'TODAS as ordens de serviço',
+      open: 'as ordens EM ANDAMENTO',
+      closed: 'as ordens FINALIZADAS'
+    };
+
+    if (!confirm(`⚠️ Deseja realmente excluir ${labelByScope[deleteScope]}? Esta ação é irreversível.`)) return;
 
     try {
       setIsDeletingAllOrders(true);
-      const success = await deleteAllServiceOrders();
+      const success = await deleteServiceOrdersByScope(deleteScope);
       if (success) {
-        toast.success('✅ Todas as ordens de serviço foram excluídas.');
+        toast.success('✅ Ordens de serviço excluídas com sucesso.');
         await fetchOrders();
       } else {
-        toast.error('❌ Não foi possível excluir todas as ordens.');
+        toast.error('❌ Não foi possível excluir as ordens selecionadas.');
       }
     } catch (err) {
       console.error('Erro ao excluir todas as ordens:', err);
-      toast.error('❌ Erro ao excluir todas as ordens.');
+      toast.error('❌ Erro ao excluir as ordens selecionadas.');
     } finally {
       setIsDeletingAllOrders(false);
     }
@@ -174,13 +182,24 @@ export default function History() {
           </div>
           <div className="flex items-center gap-2">
             {isAdmin && (
-              <button
-                onClick={handleDeleteAllOrders}
-                disabled={isDeletingAllOrders}
-                className="bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white font-medium py-2.5 px-4 rounded-xl shadow-lg shadow-red-600/20 flex items-center gap-2 transition-all"
-              >
-                {isDeletingAllOrders ? 'Excluindo...' : 'Excluir Todas as O.S'}
-              </button>
+              <>
+                <select
+                  value={deleteScope}
+                  onChange={(e) => setDeleteScope(e.target.value as ServiceOrderDeleteScope)}
+                  className="bg-white border border-slate-300 text-slate-700 font-medium py-2.5 px-3 rounded-xl"
+                >
+                  <option value="all">Todas</option>
+                  <option value="open">Em andamento</option>
+                  <option value="closed">Finalizadas</option>
+                </select>
+                <button
+                  onClick={handleDeleteAllOrders}
+                  disabled={isDeletingAllOrders}
+                  className="bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white font-medium py-2.5 px-4 rounded-xl shadow-lg shadow-red-600/20 flex items-center gap-2 transition-all"
+                >
+                  {isDeletingAllOrders ? 'Excluindo...' : 'Excluir O.S Selecionadas'}
+                </button>
+              </>
             )}
             <button
               onClick={exportToCSV}

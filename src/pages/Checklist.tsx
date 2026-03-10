@@ -140,9 +140,9 @@ export default function Checklist() {
 
   const loadTemplate = async (model: string) => {
     try {
-      const template = await getChecklistTemplateByModel(model);
-      if (template) {
-        const items = template.items || [];
+      const templateData = await getChecklistTemplateByModel(model);
+      if (templateData) {
+        const items = templateData.items || [];
         if (editingModel) {
           setTemplateItems(items);
         } else {
@@ -153,30 +153,6 @@ export default function Checklist() {
       }
     } catch (err) {
       console.error('Erro ao carregar template:', err);
-    }
-  };
-
-  const handleSaveTemplate = async () => {
-    if (!editingModel) return;
-    try {
-      const itemsStr = JSON.stringify(templateItems);
-      const { error } = await supabase
-        .from('checklist_templates')
-        .upsert({
-          machine_model: editingModel,
-          items: itemsStr
-        });
-      
-      if (!error) {
-        setIsTemplateModalOpen(false);
-        setEditingModel(null);
-        toast.success('Template salvo com sucesso!');
-      } else {
-        toast.error('Erro ao salvar template.');
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error('Erro ao salvar template.');
     }
   };
 
@@ -250,46 +226,12 @@ export default function Checklist() {
       toast.success('Checklist salvo com sucesso!');
 
       try {
-        // Load updated history from Supabase
-        const checklists = await getChecklists();
-
-        const userHistory = checklists.filter((insp: any) => insp.operator_id === user.id);
-        setInspectionHistory(
-          userHistory.map((insp: any) => {
-            let parsedData = {};
-
-            try {
-              parsedData =
-                typeof insp.data === 'string'
-                  ? JSON.parse(insp.data)
-                  : insp.data || {};
-            } catch (err) {
-              console.error('Erro ao parsear checklist:', err);
-              parsedData = {};
-            }
-
-            return {
-              id: insp.id,
-              machine: machines.find(m => m.id === insp.machine_id)?.name || `Máquina ${insp.machine_id}`,
-              machine_id: insp.machine_id,
-              date: toSafeDate(insp.date || insp.created_at),
-              dateFormatted: toSafeDate(insp.date || insp.created_at).toLocaleString(),
-              data: toChecklistObject(parsedData)
-            };
-          })
-        );
-
-        // Aguarda um pouco para garantir que o histórico foi atualizado
-        setTimeout(() => {
-          setSelectedMachine(null);
-          setChecklistData({});
-        }, 1000);
+        await loadChecklists();
+        setSelectedMachine(null);
+        setChecklistData({});
       } catch (historyErr) {
         console.error('Erro ao atualizar histórico:', historyErr);
-        toast.error('Checklist salvo, mas erro ao atualizar histórico. Recarregue a página.');
-        setTimeout(() => {
-          window.location.reload();
-        }, 2000);
+        toast.error('Checklist salvo, mas houve falha ao atualizar histórico nesta tela.');
       }
     } catch (err) {
       console.error('Erro:', err);
@@ -457,7 +399,7 @@ export default function Checklist() {
                     const matchMachine = !filterMachine || String(insp.machine_id ?? '') === filterMachine;
                     return matchDate && matchMachine;
                   }).map((insp, idx) => (
-                    <li key={insp.id || idx} className="bg-white p-5 rounded-xl border border-slate-200 hover:shadow-md transition-shadow">
+                    <li key={`${insp.id ?? 'noid'}-${idx}`} className="bg-white p-5 rounded-xl border border-slate-200 hover:shadow-md transition-shadow">
                       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-3">
                         <div>
                           <div className="font-bold text-slate-900">{insp.machine}</div>

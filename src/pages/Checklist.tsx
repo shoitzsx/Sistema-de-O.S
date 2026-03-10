@@ -395,7 +395,8 @@ export default function Checklist() {
                 <h3 className="text-lg font-bold text-slate-900">
                   Histórico de Checklist Mensal
                   {inspectionHistory.length > 0 && <span className="text-sm text-slate-500 font-normal ml-2">({inspectionHistory.filter(h => {
-                    const matchDate = !filterDate || h.date.toISOString().split('T')[0] === filterDate;
+                    const dateIso = toSafeDate(h.date).toISOString().split('T')[0];
+                    const matchDate = !filterDate || dateIso === filterDate;
                     const matchMachine = !filterMachine || h.machine_id.toString() === filterMachine;
                     return matchDate && matchMachine;
                   }).length})</span>}

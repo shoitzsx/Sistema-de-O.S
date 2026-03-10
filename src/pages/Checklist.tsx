@@ -33,6 +33,13 @@ function toSafeDate(value: unknown): Date {
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
+function toChecklistObject(value: unknown): Record<string, ChecklistItem> {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, ChecklistItem>;
+  }
+  return {};
+}
+
 export default function Checklist() {
   const { user } = useAuth();
   const [inspectionHistory, setInspectionHistory] = useState<any[]>([]);
@@ -56,7 +63,7 @@ export default function Checklist() {
         machine_id: insp.machine_id,
         date: toSafeDate(insp.date || insp.created_at),
         dateFormatted: toSafeDate(insp.date || insp.created_at).toLocaleString(),
-        data: typeof insp.data === 'string' ? JSON.parse(insp.data) : (insp.data || {})
+        data: toChecklistObject(typeof insp.data === 'string' ? JSON.parse(insp.data) : insp.data)
       })));
     } catch (err) {
       console.error('Erro ao carregar checklists:', err);
@@ -106,7 +113,7 @@ export default function Checklist() {
               machine_id: insp.machine_id,
               date: toSafeDate(insp.date || insp.created_at),
               dateFormatted: toSafeDate(insp.date || insp.created_at).toLocaleString(),
-              data: parsedData
+              data: toChecklistObject(parsedData)
             };
           })
         );
@@ -267,7 +274,7 @@ export default function Checklist() {
               machine_id: insp.machine_id,
               date: toSafeDate(insp.date || insp.created_at),
               dateFormatted: toSafeDate(insp.date || insp.created_at).toLocaleString(),
-              data: parsedData
+              data: toChecklistObject(parsedData)
             };
           })
         );
@@ -397,7 +404,7 @@ export default function Checklist() {
                   {inspectionHistory.length > 0 && <span className="text-sm text-slate-500 font-normal ml-2">({inspectionHistory.filter(h => {
                     const dateIso = toSafeDate(h.date).toISOString().split('T')[0];
                     const matchDate = !filterDate || dateIso === filterDate;
-                    const matchMachine = !filterMachine || h.machine_id.toString() === filterMachine;
+                    const matchMachine = !filterMachine || String(h.machine_id ?? '') === filterMachine;
                     return matchDate && matchMachine;
                   }).length})</span>}
                 </h3>
@@ -446,7 +453,7 @@ export default function Checklist() {
                   {inspectionHistory.filter(insp => {
                     const dateIso = toSafeDate(insp.date).toISOString().split('T')[0];
                     const matchDate = !filterDate || dateIso === filterDate;
-                    const matchMachine = !filterMachine || insp.machine_id.toString() === filterMachine;
+                    const matchMachine = !filterMachine || String(insp.machine_id ?? '') === filterMachine;
                     return matchDate && matchMachine;
                   }).map((insp, idx) => (
                     <li key={insp.id || idx} className="bg-white p-5 rounded-xl border border-slate-200 hover:shadow-md transition-shadow">
@@ -466,24 +473,28 @@ export default function Checklist() {
                           ▼ Ver itens inspecionados
                         </summary>
                         <ul className="mt-3 space-y-2 ml-2">
-                          {Object.entries(insp.data).map(([item, val]: any) => (
+                          {Object.entries(toChecklistObject(insp.data)).map(([item, val]: any) => {
+                            const status = val?.status ?? null;
+                            const observation = val?.observation ?? '';
+
+                            return (
                             <li key={item} className="text-sm bg-slate-50 p-3 rounded-lg border border-slate-100">
                               <div className="flex items-center gap-2 mb-1">
-                                <span className={`inline-block w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white ${val.status === 'ok' ? 'bg-emerald-500' :
-                                  val.status === 'nok' ? 'bg-red-500' :
+                                <span className={`inline-block w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white ${status === 'ok' ? 'bg-emerald-500' :
+                                  status === 'nok' ? 'bg-red-500' :
                                     'bg-slate-400'
                                   }`}>
-                                  {val.status?.charAt(0).toUpperCase()}
+                                  {typeof status === 'string' ? status.charAt(0).toUpperCase() : '-'}
                                 </span>
                                 <span className="font-medium text-slate-900">{item}</span>
                               </div>
-                              {val.observation && (
+                              {observation && (
                                 <div className="ml-8 text-xs text-slate-600 italic border-l-2 border-amber-300 pl-2">
-                                  💬 {val.observation}
+                                  💬 {observation}
                                 </div>
                               )}
                             </li>
-                          ))}
+                          )})}
                         </ul>
                       </details>
                     </li>

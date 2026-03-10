@@ -371,11 +371,12 @@ export default function Checklist() {
     );
   };
 
-  return (
-    <>
-      <NokConfirmDialog />
-      <ToastContainer position="top-right" autoClose={3000} hideProgressBar={false} newestOnTop={true} closeOnClick={true} rtl={false} pauseOnFocusLoss={true} draggable={true} pauseOnHover={true} aria-label="Notificações" theme="light" />
-      <Layout>
+  try {
+    return (
+      <>
+        <NokConfirmDialog />
+        <ToastContainer position="top-right" autoClose={3000} hideProgressBar={false} newestOnTop={true} closeOnClick={true} rtl={false} pauseOnFocusLoss={true} draggable={true} pauseOnHover={true} aria-label="Notificações" theme="light" />
+        <Layout>
         {!selectedMachine ? (
           // TELA DE SELEÇÃO + HISTÓRICO
           <div className="max-w-6xl mx-auto">
@@ -425,9 +426,10 @@ export default function Checklist() {
                   >
                     <option value="">Todas as máquinas</option>
                     {Array.from(new Set(inspectionHistory.map(h => h.machine_id))).map(machineId => {
+                      if (machineId === null || machineId === undefined) return null;
                       const machineHistory = inspectionHistory.find(h => h.machine_id === machineId);
                       return (
-                        <option key={machineId} value={machineId.toString()}>
+                        <option key={String(machineId)} value={String(machineId)}>
                           {machineHistory?.machine}
                         </option>
                       );
@@ -651,7 +653,24 @@ export default function Checklist() {
           </div>
         </div>
       )}
+        </Layout>
+      </>
+    );
+  } catch (err) {
+    console.error('Erro de render no Checklist:', err);
+    return (
+      <Layout>
+        <div className="max-w-2xl mx-auto mt-8 bg-red-50 border border-red-200 rounded-xl p-6">
+          <h2 className="text-xl font-bold text-red-700 mb-2">Erro ao renderizar o checklist</h2>
+          <p className="text-red-700 mb-4">Ocorreu um erro inesperado ao carregar a tela. Tente recarregar.</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg"
+          >
+            Recarregar página
+          </button>
+        </div>
       </Layout>
-    </>
-  );
+    );
+  }
 }

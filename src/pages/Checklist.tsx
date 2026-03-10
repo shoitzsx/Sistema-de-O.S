@@ -3,7 +3,7 @@ import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
-import { CheckCircle, XCircle, MinusCircle, ChevronRight, Save, Calendar, ChevronDown, ChevronUp, AlertCircle } from 'lucide-react';
+import { CheckCircle, XCircle, MinusCircle, ChevronRight, Save, Calendar, ChevronDown, ChevronUp, AlertCircle, Plus, Trash2, Settings } from 'lucide-react';
 import clsx from 'clsx';
 import { getMachines, getChecklistTemplateByModel, getChecklists, createChecklist } from '../lib/supabaseApi';
 import { supabase } from '../lib/supabase';
@@ -42,6 +42,7 @@ function toChecklistObject(value: unknown): Record<string, ChecklistItem> {
 
 export default function Checklist() {
   const { user } = useAuth();
+  const isAdmin = String(user?.role || '').trim().toLowerCase() === 'admin';
   const [inspectionHistory, setInspectionHistory] = useState<any[]>([]);
   const [filterDate, setFilterDate] = useState<string>('');
   const [filterMachine, setFilterMachine] = useState<string>('');
@@ -82,6 +83,10 @@ export default function Checklist() {
   const [editingModel, setEditingModel] = useState<string | null>(null);
   const [templateItems, setTemplateItems] = useState<TemplateCategory[]>([]);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [isNewModelMode, setIsNewModelMode] = useState(false);
+  const [newModelName, setNewModelName] = useState('');
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newItemByCategory, setNewItemByCategory] = useState<Record<number, string>>({});
   const [nokItemsToConfirm, setNokItemsToConfirm] = useState<string[]>([]);
   const [showNokConfirmDialog, setShowNokConfirmDialog] = useState(false);
 
@@ -154,9 +159,117 @@ export default function Checklist() {
         setTemplate([]);
         setChecklistData({});
         setOpenCategory(null);
+      } else if (editingModel) {
+        setTemplateItems([]);
       }
     } catch (err) {
       console.error('Erro ao carregar template:', err);
+    }
+  };
+
+  const openTemplateModal = () => {
+    setIsTemplateModalOpen(true);
+    setIsNewModelMode(false);
+    setNewModelName('');
+    setNewCategoryName('');
+    setNewItemByCategory({});
+    const defaultModel = selectedMachine?.model || availableModels[0] || null;
+    setEditingModel(defaultModel);
+    setTemplateItems([]);
+  };
+
+  const closeTemplateModal = () => {
+    setIsTemplateModalOpen(false);
+    setEditingModel(null);
+    setTemplateItems([]);
+    setNewCategoryName('');
+    setNewItemByCategory({});
+    setIsNewModelMode(false);
+    setNewModelName('');
+  };
+
+  const addCategory = () => {
+    const category = newCategoryName.trim();
+    if (!category) return;
+    setTemplateItems(prev => [...prev, { category, items: [] }]);
+    setNewCategoryName('');
+  };
+
+  const removeCategory = (categoryIndex: number) => {
+    setTemplateItems(prev => prev.filter((_, idx) => idx !== categoryIndex));
+  };
+
+  const addItemToCategory = (categoryIndex: number) => {
+    const text = (newItemByCategory[categoryIndex] || '').trim();
+    if (!text) return;
+
+    setTemplateItems(prev =>
+      prev.map((cat, idx) =>
+        idx === categoryIndex ? { ...cat, items: [...cat.items, text] } : cat
+      )
+    );
+
+    setNewItemByCategory(prev => ({ ...prev, [categoryIndex]: '' }));
+  };
+
+  const removeItemFromCategory = (categoryIndex: number, itemIndex: number) => {
+    setTemplateItems(prev =>
+      prev.map((cat, idx) =>
+        idx === categoryIndex
+          ? { ...cat, items: cat.items.filter((_, i) => i !== itemIndex) }
+          : cat
+      )
+    );
+  };
+
+  const handleSaveTemplate = async () => {
+    const modelToSave = isNewModelMode ? newModelName.trim() : (editingModel || '').trim();
+
+    if (!modelToSave) {
+      toast.error('Informe o modelo da máquina para salvar o template.');
+      return;
+    }
+
+    if (!templateItems.length) {
+      toast.error('Adicione pelo menos uma categoria ao template.');
+      return;
+    }
+
+    const normalizedTemplate = templateItems
+      .map(cat => ({
+        category: cat.category.trim(),
+        items: cat.items.map(item => item.trim()).filter(Boolean)
+      }))
+      .filter(cat => cat.category && cat.items.length > 0);
+
+    if (!normalizedTemplate.length) {
+      toast.error('Cada categoria deve ter ao menos um item válido.');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('checklist_templates')
+        .upsert({ machine_model: modelToSave, items: JSON.stringify(normalizedTemplate) }, { onConflict: 'machine_model' });
+
+      if (error) throw error;
+
+      toast.success('Template de inspeção salvo com sucesso!');
+
+      if (!availableModels.includes(modelToSave)) {
+        setAvailableModels(prev => [...prev, modelToSave]);
+      }
+
+      if (selectedMachine?.model === modelToSave) {
+        setTemplate(normalizedTemplate);
+        setChecklistData({});
+        setOpenCategory(null);
+      }
+
+      closeTemplateModal();
+    } catch (err) {
+      console.error('Erro ao salvar template:', err);
+      toast.error('Erro ao salvar template de inspeção.');
     }
   };
 
@@ -325,7 +438,17 @@ export default function Checklist() {
         {!selectedMachine ? (
           // TELA DE SELEÇÃO + HISTÓRICO
           <div className="max-w-6xl mx-auto">
-            <h2 className="text-2xl font-bold text-slate-900 mb-6">Checklist Mensal</h2>
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+              <h2 className="text-2xl font-bold text-slate-900">Checklist Mensal</h2>
+              {isAdmin && (
+                <button
+                  onClick={openTemplateModal}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-5 py-2.5 rounded-xl shadow-lg shadow-emerald-600/20 flex items-center gap-2 transition-all"
+                >
+                  <Settings size={18} /> Cadastrar Inspecao
+                </button>
+              )}
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {machines.map(machine => (
                 <button
@@ -595,6 +718,149 @@ export default function Checklist() {
             </div>
 
             {/* Histórico agora está na página inicial, removido daqui */}
+          </div>
+        </div>
+      )}
+
+      {isTemplateModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="px-6 py-5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-bold text-slate-900">Cadastro de Inspecao</h3>
+                <p className="text-sm text-slate-500">Configure um template por modelo de equipamento</p>
+              </div>
+              <button onClick={closeTemplateModal} className="text-slate-500 hover:text-slate-700">
+                <XCircle size={22} />
+              </button>
+            </div>
+
+            <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-6 max-h-[75vh] overflow-y-auto">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Modelo da maquina</label>
+                  {!isNewModelMode ? (
+                    <div className="flex gap-2">
+                      <select
+                        value={editingModel || ''}
+                        onChange={(e) => setEditingModel(e.target.value || null)}
+                        className="flex-1 p-3 rounded-lg border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none"
+                      >
+                        <option value="">Selecione um modelo</option>
+                        {availableModels.map(model => (
+                          <option key={model} value={model}>{model}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => setIsNewModelMode(true)}
+                        className="px-4 rounded-lg border border-slate-300 hover:bg-slate-50"
+                      >
+                        Novo
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <input
+                        value={newModelName}
+                        onChange={(e) => setNewModelName(e.target.value)}
+                        placeholder="Ex: BH180"
+                        className="flex-1 p-3 rounded-lg border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none"
+                      />
+                      <button
+                        onClick={() => setIsNewModelMode(false)}
+                        className="px-4 rounded-lg border border-slate-300 hover:bg-slate-50"
+                      >
+                        Voltar
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="border border-slate-200 rounded-xl p-4 bg-slate-50">
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Nova categoria</label>
+                  <div className="flex gap-2">
+                    <input
+                      value={newCategoryName}
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      placeholder="Ex: Sistema hidraulico"
+                      className="flex-1 p-2.5 rounded-lg border border-slate-200"
+                    />
+                    <button
+                      onClick={addCategory}
+                      className="px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg flex items-center gap-1"
+                    >
+                      <Plus size={16} /> Adicionar
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="font-semibold text-slate-800 mb-3">Categorias e Itens</h4>
+                <div className="space-y-3">
+                  {templateItems.length === 0 && (
+                    <div className="text-sm text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-4">
+                      Nenhuma categoria adicionada ainda.
+                    </div>
+                  )}
+                  {templateItems.map((cat, categoryIndex) => (
+                    <div key={`${cat.category}-${categoryIndex}`} className="border border-slate-200 rounded-xl p-3">
+                      <div className="flex items-center justify-between gap-2 mb-3">
+                        <input
+                          value={cat.category}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setTemplateItems(prev => prev.map((c, i) => i === categoryIndex ? { ...c, category: value } : c));
+                          }}
+                          className="font-semibold text-slate-800 bg-transparent border-b border-dashed border-slate-300 focus:outline-none w-full"
+                        />
+                        <button onClick={() => removeCategory(categoryIndex)} className="text-red-600 hover:text-red-700">
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+
+                      <div className="space-y-2 mb-2">
+                        {cat.items.map((item, itemIndex) => (
+                          <div key={`${item}-${itemIndex}`} className="flex items-center justify-between text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                            <span>{item}</span>
+                            <button
+                              onClick={() => removeItemFromCategory(categoryIndex, itemIndex)}
+                              className="text-red-600 hover:text-red-700"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="flex gap-2">
+                        <input
+                          value={newItemByCategory[categoryIndex] || ''}
+                          onChange={(e) => setNewItemByCategory(prev => ({ ...prev, [categoryIndex]: e.target.value }))}
+                          placeholder="Adicionar item da inspeção"
+                          className="flex-1 p-2.5 rounded-lg border border-slate-200"
+                        />
+                        <button
+                          onClick={() => addItemToCategory(categoryIndex)}
+                          className="px-3 bg-slate-800 hover:bg-slate-900 text-white rounded-lg"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-slate-200 bg-white flex justify-end gap-3">
+              <button onClick={closeTemplateModal} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium">
+                Cancelar
+              </button>
+              <button onClick={handleSaveTemplate} className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold">
+                Salvar Inspecao
+              </button>
+            </div>
           </div>
         </div>
       )}

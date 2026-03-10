@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ToastContainer, toast } from 'react-toastify';
+import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
@@ -375,7 +375,6 @@ export default function Checklist() {
     return (
       <>
         <NokConfirmDialog />
-        <ToastContainer position="top-right" autoClose={3000} hideProgressBar={false} newestOnTop={true} closeOnClick={true} rtl={false} pauseOnFocusLoss={true} draggable={true} pauseOnHover={true} aria-label="Notificações" theme="light" />
         <Layout>
         {!selectedMachine ? (
           // TELA DE SELEÇÃO + HISTÓRICO

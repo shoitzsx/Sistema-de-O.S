@@ -28,6 +28,11 @@ interface TemplateCategory {
   items: string[];
 }
 
+function toSafeDate(value: unknown): Date {
+  const parsed = new Date(typeof value === 'string' && value ? value : Date.now());
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
 export default function Checklist() {
   const { user } = useAuth();
   const [inspectionHistory, setInspectionHistory] = useState<any[]>([]);
@@ -49,8 +54,8 @@ export default function Checklist() {
         id: insp.id,
         machine: machines.find(m => m.id === insp.machine_id)?.name || `Máquina ${insp.machine_id}`,
         machine_id: insp.machine_id,
-        date: new Date(insp.date || insp.created_at),
-        dateFormatted: new Date(insp.date || insp.created_at).toLocaleString(),
+        date: toSafeDate(insp.date || insp.created_at),
+        dateFormatted: toSafeDate(insp.date || insp.created_at).toLocaleString(),
         data: typeof insp.data === 'string' ? JSON.parse(insp.data) : (insp.data || {})
       })));
     } catch (err) {
@@ -99,8 +104,8 @@ export default function Checklist() {
               id: insp.id,
               machine: data.find(m => m.id === insp.machine_id)?.name || `Máquina ${insp.machine_id}`,
               machine_id: insp.machine_id,
-              date: new Date(insp.date || insp.created_at),
-              dateFormatted: new Date(insp.date || insp.created_at).toLocaleString(),
+              date: toSafeDate(insp.date || insp.created_at),
+              dateFormatted: toSafeDate(insp.date || insp.created_at).toLocaleString(),
               data: parsedData
             };
           })
@@ -260,8 +265,8 @@ export default function Checklist() {
               id: insp.id,
               machine: machines.find(m => m.id === insp.machine_id)?.name || `Máquina ${insp.machine_id}`,
               machine_id: insp.machine_id,
-              date: new Date(insp.date),
-              dateFormatted: new Date(insp.date).toLocaleString(),
+              date: toSafeDate(insp.date || insp.created_at),
+              dateFormatted: toSafeDate(insp.date || insp.created_at).toLocaleString(),
               data: parsedData
             };
           })
@@ -438,7 +443,8 @@ export default function Checklist() {
               {inspectionHistory.length > 0 ? (
                 <ul className="space-y-4">
                   {inspectionHistory.filter(insp => {
-                    const matchDate = !filterDate || insp.date.toISOString().split('T')[0] === filterDate;
+                    const dateIso = toSafeDate(insp.date).toISOString().split('T')[0];
+                    const matchDate = !filterDate || dateIso === filterDate;
                     const matchMachine = !filterMachine || insp.machine_id.toString() === filterMachine;
                     return matchDate && matchMachine;
                   }).map((insp, idx) => (

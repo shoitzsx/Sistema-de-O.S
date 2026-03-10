@@ -6,6 +6,7 @@ import { motion } from 'motion/react';
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const isAdmin = String(user?.role || '').trim().toLowerCase() === 'admin';
 
   const modules = [
     {
@@ -50,7 +51,9 @@ export default function Dashboard() {
     }
   ];
 
-  const allowedModules = modules.filter(m => user?.allowed_modules.includes(m.id));
+  const allowedModules = isAdmin
+    ? modules
+    : modules.filter(m => user?.allowed_modules.includes(m.id));
 
   return (
     <Layout>

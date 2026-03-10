@@ -150,6 +150,10 @@ export default function Checklist() {
           setChecklistData({});
           setOpenCategory(null);
         }
+      } else if (!editingModel) {
+        setTemplate([]);
+        setChecklistData({});
+        setOpenCategory(null);
       }
     } catch (err) {
       console.error('Erro ao carregar template:', err);

@@ -445,7 +445,7 @@ export async function getChecklistTemplateByModel(model: string): Promise<any> {
       .from('checklist_templates')
       .select('*')
       .eq('machine_model', model)
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.log('Template não encontrado para modelo:', model);
@@ -468,9 +468,9 @@ export async function updateChecklistTemplate(machineModel: string, items: any):
       .from('checklist_templates')
       .select('*')
       .eq('machine_model', machineModel)
-      .single();
+      .maybeSingle();
 
-    if (checkError && checkError.code !== 'PGRST116') {
+    if (checkError) {
       throw checkError;
     }
 

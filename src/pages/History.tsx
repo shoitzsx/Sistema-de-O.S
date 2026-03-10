@@ -3,7 +3,8 @@ import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
 import { Clock, AlertTriangle, CheckCircle, FileText, Download } from 'lucide-react';
 import { motion } from 'motion/react';
-import { getServiceOrders } from '../lib/supabaseApi';
+import { toast } from 'react-toastify';
+import { getServiceOrders, deleteAllServiceOrders } from '../lib/supabaseApi';
 
 interface ServiceOrder {
   id: number;
@@ -24,11 +25,13 @@ interface ServiceOrder {
 
 export default function History() {
   const { user } = useAuth();
+  const isAdmin = String(user?.role || '').toLowerCase() === 'admin';
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
   const [filteredOrders, setFilteredOrders] = useState<ServiceOrder[]>([]);
   const [filterStatus, setFilterStatus] = useState<'all' | 'open' | 'closed'>('closed');
   const [filterType, setFilterType] = useState<'all' | 'preventiva' | 'corretiva'>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [isDeletingAllOrders, setIsDeletingAllOrders] = useState(false);
 
   useEffect(() => {
     fetchOrders();
@@ -51,7 +54,7 @@ export default function History() {
     let filtered = [...orders];
 
     // Filter por role: admin vê tudo, operador vê só seu
-    if (user?.role !== 'admin') {
+    if (!isAdmin) {
       filtered = filtered.filter(order => order.operator_id === user?.id);
     }
 
@@ -133,6 +136,27 @@ export default function History() {
     document.body.removeChild(link);
   };
 
+  const handleDeleteAllOrders = async () => {
+    if (!isAdmin) return;
+    if (!confirm('⚠️ Deseja realmente excluir TODAS as ordens de serviço? Esta ação é irreversível.')) return;
+
+    try {
+      setIsDeletingAllOrders(true);
+      const success = await deleteAllServiceOrders();
+      if (success) {
+        toast.success('✅ Todas as ordens de serviço foram excluídas.');
+        await fetchOrders();
+      } else {
+        toast.error('❌ Não foi possível excluir todas as ordens.');
+      }
+    } catch (err) {
+      console.error('Erro ao excluir todas as ordens:', err);
+      toast.error('❌ Erro ao excluir todas as ordens.');
+    } finally {
+      setIsDeletingAllOrders(false);
+    }
+  };
+
   return (
     <Layout>
       <div className="mb-8">
@@ -140,15 +164,26 @@ export default function History() {
           <div>
             <h2 className="text-2xl font-bold text-slate-900">Histórico de Ordens de Serviço</h2>
             <p className="text-slate-500">
-              {user?.role === 'admin' ? 'Todas as O.S criadas no sistema' : 'Suas ordens de serviço'}
+              {isAdmin ? 'Todas as O.S criadas no sistema' : 'Suas ordens de serviço'}
             </p>
           </div>
-          <button
-            onClick={exportToCSV}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 px-4 rounded-xl shadow-lg shadow-emerald-600/20 flex items-center gap-2 transition-all"
-          >
-            <Download size={18} /> Exportar CSV
-          </button>
+          <div className="flex items-center gap-2">
+            {isAdmin && (
+              <button
+                onClick={handleDeleteAllOrders}
+                disabled={isDeletingAllOrders}
+                className="bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white font-medium py-2.5 px-4 rounded-xl shadow-lg shadow-red-600/20 flex items-center gap-2 transition-all"
+              >
+                {isDeletingAllOrders ? 'Excluindo...' : 'Excluir Todas as O.S'}
+              </button>
+            )}
+            <button
+              onClick={exportToCSV}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 px-4 rounded-xl shadow-lg shadow-emerald-600/20 flex items-center gap-2 transition-all"
+            >
+              <Download size={18} /> Exportar CSV
+            </button>
+          </div>
         </div>
 
         {/* Filtros */}
@@ -249,7 +284,7 @@ export default function History() {
                     </p>
                   </div>
 
-                  {user?.role === 'admin' && (
+                  {isAdmin && (
                     <div className="text-sm text-slate-500 whitespace-nowrap">
                       <p><span className="font-medium">Operador:</span> {order.operator_name}</p>
                     </div>

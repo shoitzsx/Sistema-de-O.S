@@ -1,5 +1,15 @@
 import { supabase, ServiceOrder, Machine, PartTool, User } from './supabase';
 
+function safeParseJson<T>(value: unknown, fallback: T): T {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value !== 'string') return value as T;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 // ===== USERS =====
 export async function loginUser(username: string, password: string): Promise<User | null> {
   try {
@@ -120,7 +130,10 @@ export async function getMachines(): Promise<Machine[]> {
       .select('*');
 
     if (error) throw error;
-    return data || [];
+    return (data || []).map(machine => ({
+      ...machine,
+      quick_specs: safeParseJson<string[]>(machine.quick_specs, [])
+    }));
   } catch (err) {
     console.error('Erro ao buscar máquinas:', err);
     return [];
@@ -136,7 +149,12 @@ export async function createMachine(machine: Omit<Machine, 'id'>): Promise<Machi
       .single();
 
     if (error) throw error;
-    return data;
+    return data
+      ? {
+          ...data,
+          quick_specs: safeParseJson<string[]>(data.quick_specs, [])
+        }
+      : null;
   } catch (err) {
     console.error('Erro ao criar máquina:', err);
     return null;
@@ -201,8 +219,8 @@ export async function getServiceOrders(): Promise<ServiceOrder[]> {
     
     return (data || []).map(order => ({
       ...order,
-      tools: JSON.parse(order.tools || '[]'),
-      used_parts_tools: JSON.parse(order.used_parts_tools || '[]')
+      tools: safeParseJson<string[]>(order.tools, []),
+      used_parts_tools: safeParseJson<number[]>(order.used_parts_tools, [])
     }));
   } catch (err) {
     console.error('Erro ao buscar ordens de serviço:', err);
@@ -229,8 +247,8 @@ export async function createServiceOrder(order: Omit<ServiceOrder, 'id' | 'creat
     if (data) {
       return {
         ...data,
-        tools: JSON.parse(data.tools || '[]'),
-        used_parts_tools: JSON.parse(data.used_parts_tools || '[]')
+        tools: safeParseJson<string[]>(data.tools, []),
+        used_parts_tools: safeParseJson<number[]>(data.used_parts_tools, [])
       };
     }
     return null;
@@ -263,8 +281,8 @@ export async function updateServiceOrder(id: number, updates: Partial<ServiceOrd
     if (data) {
       return {
         ...data,
-        tools: JSON.parse(data.tools || '[]'),
-        used_parts_tools: JSON.parse(data.used_parts_tools || '[]')
+        tools: safeParseJson<string[]>(data.tools, []),
+        used_parts_tools: safeParseJson<number[]>(data.used_parts_tools, [])
       };
     }
     return null;
@@ -294,6 +312,22 @@ export async function closeServiceOrder(id: number, endTime: string, finalReport
     return true;
   } catch (err) {
     console.error('Erro ao fechar ordem de serviço:', err);
+    return false;
+  }
+}
+
+export async function deleteAllServiceOrders(): Promise<boolean> {
+  try {
+    // Supabase delete requires a filter; this targets all persisted rows.
+    const { error } = await supabase
+      .from('service_orders')
+      .delete()
+      .gte('id', 0);
+
+    if (error) throw error;
+    return true;
+  } catch (err) {
+    console.error('Erro ao deletar todas as ordens de serviço:', err);
     return false;
   }
 }
@@ -342,7 +376,7 @@ export async function getChecklistTemplates(): Promise<any[]> {
     if (error) throw error;
     return (data || []).map(template => ({
       ...template,
-      items: JSON.parse(template.items || '[]')
+      items: safeParseJson(template.items, [])
     }));
   } catch (err) {
     console.error('Erro ao buscar templates:', err);
@@ -365,7 +399,7 @@ export async function getChecklistTemplateByModel(model: string): Promise<any> {
 
     return data ? {
       ...data,
-      items: JSON.parse(data.items || '[]')
+      items: safeParseJson(data.items, [])
     } : null;
   } catch (err) {
     console.error('Erro ao buscar template:', err);

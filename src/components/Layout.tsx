@@ -2,6 +2,8 @@ import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { LogOut, User as UserIcon, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
@@ -18,6 +20,18 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
+      <ToastContainer
+        position="top-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        aria-label="Notificações"
+      />
       <header className="bg-emerald-800 text-white shadow-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">

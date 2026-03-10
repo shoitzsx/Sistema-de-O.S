@@ -44,14 +44,14 @@ export default function Checklist() {
   const loadChecklists = async () => {
     try {
       const data = await getChecklists();
-      const userHistory = data.filter((insp: any) => insp.operator_name === user?.name);
+      const userHistory = data.filter((insp: any) => insp.operator_id === user?.id);
       setInspectionHistory(userHistory.map((insp: any) => ({
         id: insp.id,
-        machine: insp.machine_id,
+        machine: machines.find(m => m.id === insp.machine_id)?.name || `Máquina ${insp.machine_id}`,
         machine_id: insp.machine_id,
-        date: new Date(insp.created_at),
-        dateFormatted: new Date(insp.created_at).toLocaleString(),
-        data: typeof insp.items === 'string' ? JSON.parse(insp.items) : insp.items
+        date: new Date(insp.date || insp.created_at),
+        dateFormatted: new Date(insp.date || insp.created_at).toLocaleString(),
+        data: typeof insp.data === 'string' ? JSON.parse(insp.data) : (insp.data || {})
       })));
     } catch (err) {
       console.error('Erro ao carregar checklists:', err);
@@ -83,6 +83,29 @@ export default function Checklist() {
       setMachines(data);
       const models = Array.from(new Set(data.map((m: Machine) => m.model))) as string[];
       setAvailableModels(models);
+      if (user) {
+        const checklists = await getChecklists();
+        const userHistory = checklists.filter((insp: any) => insp.operator_id === user.id);
+        setInspectionHistory(
+          userHistory.map((insp: any) => {
+            let parsedData = {};
+            try {
+              parsedData = typeof insp.data === 'string' ? JSON.parse(insp.data) : (insp.data || {});
+            } catch {
+              parsedData = {};
+            }
+
+            return {
+              id: insp.id,
+              machine: data.find(m => m.id === insp.machine_id)?.name || `Máquina ${insp.machine_id}`,
+              machine_id: insp.machine_id,
+              date: new Date(insp.date || insp.created_at),
+              dateFormatted: new Date(insp.date || insp.created_at).toLocaleString(),
+              data: parsedData
+            };
+          })
+        );
+      }
     } catch (err) {
       console.error('Erro ao carregar máquinas:', err);
       toast.error('Erro ao carregar máquinas');

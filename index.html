@@ -7,6 +7,20 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Fallback for stale cached bundles that reference global `toast`.
+      // New builds use react-toastify import, but this prevents hard runtime crashes.
+      if (typeof window.toast === 'undefined') {
+        window.toast = {
+          success: function (msg) { console.log('[toast.success]', msg); },
+          error: function (msg) { console.error('[toast.error]', msg); },
+          info: function (msg) { console.info('[toast.info]', msg); },
+          warn: function (msg) { console.warn('[toast.warn]', msg); }
+        };
+      }
+      // Expose global binding for legacy code paths.
+      var toast = window.toast;
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -3,6 +3,7 @@ import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
 import { Plus, Clock, CheckCircle, AlertTriangle, Play, Square, X, Package } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { toast } from 'react-toastify';
 import { 
   getServiceOrders, 
   getMachines, 
@@ -10,6 +11,7 @@ import {
   createServiceOrder, 
   updateServiceOrder, 
   closeServiceOrder,
+  deleteAllServiceOrders,
   createPartTool,
   deletePartTool
 } from '../lib/supabaseApi';
@@ -45,6 +47,7 @@ interface Machine {
 
 export default function ServiceOrders() {
   const { user } = useAuth();
+  const isAdmin = String(user?.role || '').toLowerCase() === 'admin';
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
   const [machines, setMachines] = useState<Machine[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -60,6 +63,9 @@ export default function ServiceOrders() {
   const [editTools, setEditTools] = useState<string[]>([]);
   const [editToolsInput, setEditToolsInput] = useState('');
   const [editComponent, setEditComponent] = useState('');
+  const [timerKey, setTimerKey] = useState<number>(0);
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
+  const [isDeletingAllOrders, setIsDeletingAllOrders] = useState(false);
   const [newOrder, setNewOrder] = useState({
   machine_id: '',
   maintenance_type: 'corretiva' as 'preventiva' | 'corretiva',
@@ -74,6 +80,14 @@ export default function ServiceOrders() {
     fetchOrders();
     fetchMachines();
     fetchPartsTools();
+  }, []);
+
+  // Update timer every second
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimerKey(prev => prev + 1);
+    }, 1000);
+    return () => clearInterval(interval);
   }, []);
 
   const fetchMachines = async () => {
@@ -135,44 +149,66 @@ export default function ServiceOrders() {
 
   const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+
+    if (!user) {
+      toast.error('❌ Usuário não autenticado');
+      return;
+    }
 
     // Validações de campos obrigatórios
-    const camposObrigatorios = [
-      { campo: 'machine_id', label: 'Máquina' },
-      { campo: 'technician_name', label: 'Responsável' },
-      { campo: 'component', label: 'Componente com Falha' },
-      { campo: 'description', label: 'Descrição do Problema' }
-    ];
-
-    const campoFaltante = camposObrigatorios.find(c => !newOrder[c.campo as keyof typeof newOrder]);
-    
-    if (campoFaltante) {
-      toast.error(`Campo obrigatório: ${campoFaltante.label}`);
+    if (!newOrder.machine_id || String(newOrder.machine_id).trim() === '') {
+      toast.error('❌ Campo obrigatório: Máquina');
+      return;
+    }
+    if (!newOrder.technician_name || newOrder.technician_name.trim() === '') {
+      toast.error('❌ Campo obrigatório: Responsável');
+      return;
+    }
+    if (!newOrder.component || newOrder.component.trim() === '') {
+      toast.error('❌ Campo obrigatório: Componente com Falha');
+      return;
+    }
+    if (!newOrder.description || newOrder.description.trim() === '') {
+      toast.error('❌ Campo obrigatório: Descrição do Problema');
       return;
     }
 
     try {
-      // Encontrar máquina e operador
-      const machine = machines.find(m => m.id == newOrder.machine_id);
+      const machineId = parseInt(newOrder.machine_id);
+      if (Number.isNaN(machineId)) {
+        toast.error('❌ Máquina inválida');
+        return;
+      }
       
-      const result = await createServiceOrder({
-        machine_id: parseInt(newOrder.machine_id),
+      const machine = machines.find(m => m.id === machineId);
+
+      if (!machine) {
+        toast.error('❌ Máquina não encontrada');
+        return;
+      }
+
+      setIsSubmittingOrder(true);
+
+      const orderData = {
+        machine_id: machineId,
         maintenance_type: newOrder.maintenance_type,
         technician_name: newOrder.technician_name,
         component: newOrder.component,
         description: newOrder.description,
-        machine_name: machine?.name || `Máquina ${newOrder.machine_id}`,
+        machine_name: machine.name,
         operator_id: user.id,
         operator_name: user.name,
         start_time: new Date().toISOString(),
-        status: 'open',
+        end_time: null,
+        status: 'open' as const,
         used_parts_tools: newOrder.used_parts_tools,
         tools: newOrder.tools
-      });
+      };
+
+      const result = await createServiceOrder(orderData);
 
       if (result) {
-        toast.success('Ordem de serviço criada com sucesso!');
+        toast.success('✅ Ordem de serviço criada com sucesso!');
         await fetchOrders();
         setIsModalOpen(false);
         setNewOrder({
@@ -186,11 +222,14 @@ export default function ServiceOrders() {
           toolsInput: ''
         });
       } else {
-        toast.error('Erro ao criar ordem de serviço.');
+        toast.error('❌ Erro ao criar ordem de serviço.');
       }
     } catch (err) {
-      console.error('Erro ao criar ordem:', err);
-      toast.error('Erro ao criar ordem de serviço.');
+      console.error('❌ Erro ao criar ordem:', err);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      toast.error(`❌ Erro: ${errorMsg}`);
+    } finally {
+      setIsSubmittingOrder(false);
     }
   };
 
@@ -207,6 +246,27 @@ export default function ServiceOrders() {
     } catch (err) {
       console.error('Erro ao finalizar ordem:', err);
       toast.error('Erro ao finalizar ordem de serviço.');
+    }
+  };
+
+  const handleDeleteAllOrders = async () => {
+    if (!isAdmin) return;
+    if (!confirm('⚠️ Deseja realmente excluir TODAS as ordens de serviço? Esta ação é irreversível.')) return;
+
+    try {
+      setIsDeletingAllOrders(true);
+      const success = await deleteAllServiceOrders();
+      if (success) {
+        toast.success('✅ Todas as ordens de serviço foram excluídas.');
+        await fetchOrders();
+      } else {
+        toast.error('❌ Não foi possível excluir todas as ordens.');
+      }
+    } catch (err) {
+      console.error('Erro ao excluir todas as ordens:', err);
+      toast.error('❌ Erro ao excluir todas as ordens.');
+    } finally {
+      setIsDeletingAllOrders(false);
     }
   };
 
@@ -228,15 +288,19 @@ export default function ServiceOrders() {
   };
 
   const calculateDuration = (start: string, end: string | null) => {
-    const startTime = new Date(start).getTime();
-    const endTime = end ? new Date(end).getTime() : Date.now();
-    const diff = endTime - startTime;
+    try {
+      const startTime = new Date(start).getTime();
+      const endTime = end ? new Date(end).getTime() : Date.now();
+      let diff = Math.abs(endTime - startTime);
 
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
 
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+      return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    } catch (err) {
+      return '00:00:00';
+    }
   };
 
   return (
@@ -247,7 +311,16 @@ export default function ServiceOrders() {
           <p className="text-slate-500">Gerenciamento de ordens de serviço</p>
         </div>
         <div className="flex items-center gap-3">
-          {user?.role === 'admin' && (
+          {isAdmin && (
+            <button
+              onClick={handleDeleteAllOrders}
+              disabled={isDeletingAllOrders}
+              className="bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white font-medium py-2.5 px-5 rounded-xl shadow-lg shadow-red-600/20 flex items-center gap-2 transition-all"
+            >
+              {isDeletingAllOrders ? 'Excluindo...' : 'Excluir Todas as O.S'}
+            </button>
+          )}
+          {isAdmin && (
             <button
               onClick={() => setIsPartsToolsModalOpen(true)}
               className="bg-purple-600 hover:bg-purple-700 text-white font-medium py-2.5 px-5 rounded-xl shadow-lg shadow-purple-600/20 flex items-center gap-2 transition-all"
@@ -305,7 +378,7 @@ export default function ServiceOrders() {
                   <Clock size={16} />
                   Duração
                 </div>
-                <div className="text-2xl font-mono font-bold text-slate-800">
+                <div className="text-2xl font-mono font-bold text-slate-800" key={timerKey}>
                   {calculateDuration(order.start_time, order.end_time)}
                 </div>
               </div>
@@ -501,9 +574,11 @@ export default function ServiceOrders() {
                   </button>
                   <button
                     type="submit"
+                    disabled={isSubmittingOrder}
+                    aria-busy={isSubmittingOrder}
                     className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-medium py-3 rounded-xl shadow-lg shadow-orange-500/20 transition-colors flex items-center justify-center gap-2"
                   >
-                    <Play size={18} /> Iniciar Trabalho
+                    <Play size={18} /> {isSubmittingOrder ? 'Iniciando...' : 'Iniciar Trabalho'}
                   </button>
                 </div>
               </form>
@@ -634,7 +709,7 @@ export default function ServiceOrders() {
                         finalReport || undefined
                       );
                       if (result) {
-                        alert('✅ Ordem de serviço finalizada com sucesso!');
+                        toast.success('✅ Ordem de serviço finalizada com sucesso!');
                         await fetchOrders();
                         setFinishModalOpen(false);
                         setFinalReport('');
@@ -716,11 +791,11 @@ export default function ServiceOrders() {
                       setEditReportModalOpen(false);
                       setEditingOrder(null);
                     } else {
-                      alert('❌ Erro ao atualizar relatório.');
+                      toast.error('❌ Erro ao atualizar relatório.');
                     }
                   } catch (err) { 
                     console.error(err);
-                    alert('❌ Erro ao atualizar relatório.');
+                    toast.error('❌ Erro ao atualizar relatório.');
                   }
                 }} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-lg">Salvar</button>
               </div>

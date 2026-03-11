@@ -344,7 +344,8 @@ export default function ServiceOrders() {
     try {
       const startTime = new Date(start).getTime();
       const endTime = end ? new Date(end).getTime() : Date.now();
-      let diff = Math.abs(endTime - startTime);
+      // If there is any clock/timezone skew, do not jump backwards/forwards.
+      const diff = Math.max(0, endTime - startTime);
 
       const hours = Math.floor(diff / (1000 * 60 * 60));
       const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));

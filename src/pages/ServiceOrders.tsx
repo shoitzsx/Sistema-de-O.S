@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
 import { Plus, Clock, CheckCircle, AlertTriangle, Play, Square, X, Package } from 'lucide-react';
@@ -70,7 +70,8 @@ export default function ServiceOrders() {
   const [editTools, setEditTools] = useState<string[]>([]);
   const [editToolsInput, setEditToolsInput] = useState('');
   const [editComponent, setEditComponent] = useState('');
-  const [timerKey, setTimerKey] = useState<number>(0);
+  const [clockMs, setClockMs] = useState<number>(() => Date.now());
+  const liveTimerBaseRef = useRef<Record<number, { baseDiffMs: number; baseAtMs: number }>>({});
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
   const [isDeletingAllOrders, setIsDeletingAllOrders] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -98,10 +99,21 @@ export default function ServiceOrders() {
   // Update timer every second
   useEffect(() => {
     const interval = setInterval(() => {
-      setTimerKey(prev => prev + 1);
+      setClockMs(Date.now());
     }, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    const currentIds = new Set(orders.map(order => order.id));
+    const cache = liveTimerBaseRef.current;
+    Object.keys(cache).forEach((idStr) => {
+      const id = Number(idStr);
+      if (!currentIds.has(id)) {
+        delete cache[id];
+      }
+    });
+  }, [orders]);
 
   const fetchMachines = async () => {
     try {
@@ -340,19 +352,34 @@ export default function ServiceOrders() {
     });
   };
 
-  const calculateDuration = (start: string, end: string | null) => {
-    try {
-      const parseTimestamp = (value: string) => {
-        // Supabase TIMESTAMP (without timezone) may return ISO-like strings without Z.
-        // Treat them as UTC to avoid local-time shifts (e.g., +3h / -3h drift).
-        const hasTimezone = /[zZ]|[+-]\d{2}:?\d{2}$/.test(value);
-        return new Date(hasTimezone ? value : `${value}Z`).getTime();
-      };
+  const parseTimestampMs = (value: string) => {
+    const hasTimezone = /[zZ]|[+-]\d{2}:?\d{2}$/.test(value);
+    const parsed = new Date(hasTimezone ? value : `${value}Z`).getTime();
+    return Number.isFinite(parsed) ? parsed : Date.now();
+  };
 
-      const startTime = parseTimestamp(start);
-      const endTime = end ? parseTimestamp(end) : Date.now();
-      // If there is any clock/timezone skew, do not jump backwards/forwards.
-      const diff = Math.max(0, endTime - startTime);
+  const calculateDuration = (orderId: number, start: string, end: string | null) => {
+    try {
+      const startTime = parseTimestampMs(start);
+      let diff = 0;
+
+      if (end) {
+        const endTime = parseTimestampMs(end);
+        diff = Math.max(0, endTime - startTime);
+      } else {
+        const now = clockMs;
+        const cache = liveTimerBaseRef.current;
+
+        if (!cache[orderId]) {
+          cache[orderId] = {
+            baseDiffMs: Math.max(0, now - startTime),
+            baseAtMs: now,
+          };
+        }
+
+        const baseline = cache[orderId];
+        diff = baseline.baseDiffMs + Math.max(0, now - baseline.baseAtMs);
+      }
 
       const hours = Math.floor(diff / (1000 * 60 * 60));
       const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
@@ -438,8 +465,8 @@ export default function ServiceOrders() {
                   <Clock size={16} />
                   Duração
                 </div>
-                <div className="text-2xl font-mono font-bold text-slate-800" key={timerKey}>
-                  {calculateDuration(order.start_time, order.end_time)}
+                <div className="text-2xl font-mono font-bold text-slate-800">
+                  {calculateDuration(order.id, order.start_time, order.end_time)}
                 </div>
               </div>
 

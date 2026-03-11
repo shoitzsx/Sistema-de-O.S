@@ -469,10 +469,58 @@ export default function Checklist() {
                         <div className="divide-y divide-slate-100 border-t border-slate-100">
                             {category.items.map((item, itemIndex) => {
                               const current = checklistData[item] || { status: null, observation: '' };
+                              const hasDescription = Boolean(current.observation?.trim());
+                              const statusLabel =
+                                current.status === 'ok'
+                                  ? 'OK'
+                                  : current.status === 'nok'
+                                    ? 'NOK'
+                                    : current.status === 'na'
+                                      ? 'N/A'
+                                      : 'Pendente';
+
                               return (
-                                <div key={itemIndex} className="p-5 hover:bg-slate-50/50 transition-colors">
-                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-3">
-                                    <span className="font-medium text-slate-700 text-base">{item}</span>
+                                <div
+                                  key={itemIndex}
+                                  className={clsx(
+                                    'p-5 transition-colors',
+                                    current.status === 'nok'
+                                      ? 'bg-red-50/50'
+                                      : current.status === 'ok'
+                                        ? 'bg-emerald-50/40'
+                                        : 'hover:bg-slate-50/60'
+                                  )}
+                                >
+                                  <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 mb-3">
+                                    <div className="min-w-0">
+                                      <span className="font-semibold text-slate-800 text-base block">{item}</span>
+                                      <div className="flex flex-wrap items-center gap-2 mt-2">
+                                        <span
+                                          className={clsx(
+                                            'text-xs font-semibold px-2.5 py-1 rounded-full border',
+                                            current.status === 'ok'
+                                              ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                                              : current.status === 'nok'
+                                                ? 'bg-red-100 text-red-700 border-red-200'
+                                                : current.status === 'na'
+                                                  ? 'bg-slate-200 text-slate-700 border-slate-300'
+                                                  : 'bg-amber-100 text-amber-800 border-amber-200'
+                                          )}
+                                        >
+                                          Status: {statusLabel}
+                                        </span>
+                                        <span
+                                          className={clsx(
+                                            'text-xs font-semibold px-2.5 py-1 rounded-full border',
+                                            hasDescription
+                                              ? 'bg-blue-100 text-blue-700 border-blue-200'
+                                              : 'bg-slate-100 text-slate-600 border-slate-200'
+                                          )}
+                                        >
+                                          {hasDescription ? 'Com descrição' : 'Sem descrição'}
+                                        </span>
+                                      </div>
+                                    </div>
                                     <div className="flex gap-2">
                                       <button
                                         onClick={() => handleStatusChange(item, 'ok')}

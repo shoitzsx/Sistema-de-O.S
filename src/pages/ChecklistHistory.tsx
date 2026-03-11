@@ -199,10 +199,20 @@ export default function ChecklistHistory() {
                     {Object.entries(toChecklistObject(insp.data)).map(([item, val]) => {
                       const status = val?.status ?? null;
                       const observation = val?.observation ?? '';
+                      const hasDescription = Boolean(observation.trim());
+                      const statusText =
+                        status === 'ok'
+                          ? 'OK'
+                          : status === 'nok'
+                            ? 'NOK'
+                            : status === 'na'
+                              ? 'N/A'
+                              : 'Pendente';
 
                       return (
                         <li key={item} className="text-sm bg-slate-50 p-3 rounded-lg border border-slate-100">
-                          <div className="flex items-center gap-2 mb-1">
+                          <div className="flex items-center justify-between gap-2 mb-1">
+                            <div className="flex items-center gap-2 min-w-0">
                             <span
                               className={`inline-block w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white ${
                                 status === 'ok' ? 'bg-emerald-500' : status === 'nok' ? 'bg-red-500' : 'bg-slate-400'
@@ -210,7 +220,32 @@ export default function ChecklistHistory() {
                             >
                               {typeof status === 'string' ? status.charAt(0).toUpperCase() : '-'}
                             </span>
-                            <span className="font-medium text-slate-900">{item}</span>
+                              <span className="font-medium text-slate-900 truncate">{item}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span
+                                className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
+                                  status === 'ok'
+                                    ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                                    : status === 'nok'
+                                      ? 'bg-red-100 text-red-700 border-red-200'
+                                      : status === 'na'
+                                        ? 'bg-slate-200 text-slate-700 border-slate-300'
+                                        : 'bg-amber-100 text-amber-800 border-amber-200'
+                                }`}
+                              >
+                                {statusText}
+                              </span>
+                              <span
+                                className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
+                                  hasDescription
+                                    ? 'bg-blue-100 text-blue-700 border-blue-200'
+                                    : 'bg-slate-100 text-slate-600 border-slate-200'
+                                }`}
+                              >
+                                {hasDescription ? 'Com descrição' : 'Sem descrição'}
+                              </span>
+                            </div>
                           </div>
                           {observation && (
                             <div className="ml-8 text-xs text-slate-600 italic border-l-2 border-amber-300 pl-2">

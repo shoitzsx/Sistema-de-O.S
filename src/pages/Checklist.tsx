@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { CheckCircle, XCircle, MinusCircle, ChevronRight, Save, Calendar, ChevronDown, ChevronUp, AlertCircle, Plus, Trash2, Settings } from 'lucide-react';
 import clsx from 'clsx';
 import { getMachines, getChecklistTemplateByModel, createChecklist } from '../lib/supabaseApi';
-import { getOfflineChecklistSyncSummary, processChecklistSyncQueue } from '../lib/offlineChecklist';
+import { getOfflineChecklistSyncSummary } from '../lib/offlineChecklist';
 import { supabase } from '../lib/supabase';
 
 interface ChecklistItem {
@@ -82,7 +82,6 @@ export default function Checklist() {
     }, 8000);
 
     const handleOnline = () => {
-      void processChecklistSyncQueue();
       void refreshSyncSummary();
     };
 
@@ -454,27 +453,6 @@ export default function Checklist() {
                     ? 'Os checklists pendentes serao sincronizados automaticamente.'
                     : 'Os checklists serao salvos no dispositivo e enviados ao reconectar.'}
                 </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs bg-slate-100 text-slate-700 px-2.5 py-1 rounded-full">
-                  Pendentes: {syncSummary.pending}
-                </span>
-                <span className={clsx(
-                  'text-xs px-2.5 py-1 rounded-full',
-                  syncSummary.error > 0 ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'
-                )}>
-                  Erros: {syncSummary.error}
-                </span>
-                <button
-                  onClick={async () => {
-                    await processChecklistSyncQueue();
-                    const summary = await getOfflineChecklistSyncSummary();
-                    setSyncSummary(summary);
-                  }}
-                  className="text-xs font-semibold bg-slate-800 hover:bg-slate-900 text-white px-3 py-1.5 rounded-lg"
-                >
-                  Sincronizar agora
-                </button>
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -10,7 +10,7 @@ import { getOfflineSyncSummary, processOfflineSyncQueue } from '../lib/offlineSy
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [syncInfo, setSyncInfo] = useState({ online: true, pending: 0, errors: 0 });
+  const [syncInfo, setSyncInfo] = useState({ online: true });
 
   useEffect(() => {
     const refresh = async () => {
@@ -21,8 +21,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
       setSyncInfo({
         online: globalSummary.online && checklistSummary.online,
-        pending: globalSummary.pending + checklistSummary.pending,
-        errors: globalSummary.error + checklistSummary.error,
       });
     };
 
@@ -111,9 +109,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
           <span>
             {syncInfo.online ? 'Conectado' : 'Modo offline'}
-          </span>
-          <span>
-            Pendentes: {syncInfo.pending} | Erros: {syncInfo.errors}
           </span>
         </div>
       </div>

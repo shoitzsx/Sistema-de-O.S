@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { CheckCircle } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { getChecklists, getMachines } from '../lib/supabaseApi';
-import { getOfflineChecklistSyncSummary, processChecklistSyncQueue } from '../lib/offlineChecklist';
+import { getOfflineChecklistSyncSummary } from '../lib/offlineChecklist';
 
 interface ChecklistItem {
   status: 'ok' | 'nok' | 'na' | null;
@@ -149,25 +149,6 @@ export default function ChecklistHistory() {
             <p className="text-xs text-slate-600">
               {syncSummary.online ? 'Conectado à internet' : 'Sem internet no momento'}
             </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs bg-amber-100 text-amber-800 px-2.5 py-1 rounded-full">
-              Pendentes: {syncSummary.pending}
-            </span>
-            <span className="text-xs bg-red-100 text-red-700 px-2.5 py-1 rounded-full">
-              Erros: {syncSummary.error}
-            </span>
-            <button
-              onClick={async () => {
-                await processChecklistSyncQueue();
-                await loadData();
-                const summary = await getOfflineChecklistSyncSummary();
-                setSyncSummary(summary);
-              }}
-              className="text-xs font-semibold bg-slate-800 hover:bg-slate-900 text-white px-3 py-1.5 rounded-lg"
-            >
-              Sincronizar agora
-            </button>
           </div>
         </div>
 

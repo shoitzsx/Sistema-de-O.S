@@ -122,10 +122,15 @@ export default function History() {
     });
   };
 
+  const escapeCsvField = (value: string) => {
+    const normalized = String(value ?? '').replace(/\r?\n/g, ' ');
+    return `"${normalized.replace(/"/g, '""')}"`;
+  };
+
   const exportToCSV = () => {
-    const headers = ['ID', 'Máquina', 'Operador', 'Responsável', 'Tipo', 'Componente', 'Início', 'Fim', 'Duração', 'Status', 'Relatório'];
+    const headers = ['ID', 'Máquina', 'Operador', 'Responsável', 'Tipo', 'Componente', 'Início', 'Início ISO', 'Fim', 'Fim ISO', 'Duração', 'Status', 'Relatório'];
     const csvContent = [
-      headers.join(','),
+      headers.map(escapeCsvField).join(';'),
       ...filteredOrders.map(order => [
         `#${order.id.toString().padStart(4, '0')}`,
         order.machine_name,
@@ -134,14 +139,16 @@ export default function History() {
         order.maintenance_type === 'preventiva' ? 'Preventiva' : 'Corretiva',
         order.component,
         formatDate(order.start_time),
+        order.start_time,
         order.end_time ? formatDate(order.end_time) : '-',
+        order.end_time || '-',
         calculateDuration(order.start_time, order.end_time),
         order.status === 'closed' ? 'Finalizada' : 'Em Andamento',
-        order.final_report ? `"${order.final_report.replace(/"/g, '""')}"` : '-'
-      ].join(','))
-    ].join('\n');
+        order.final_report || '-'
+      ].map(field => escapeCsvField(field)).join(';'))
+    ].join('\r\n');
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob(['\uFEFF', csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);

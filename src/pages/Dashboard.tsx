@@ -48,6 +48,14 @@ export default function Dashboard() {
       icon: Users,
       color: 'bg-purple-500',
       path: '/users'
+    },
+    {
+      id: 6,
+      name: 'Histórico de Inspeção',
+      description: 'Consulte o histórico mensal de inspeções de checklist.',
+      icon: History,
+      color: 'bg-cyan-500',
+      path: '/checklist-history'
     }
   ];
 

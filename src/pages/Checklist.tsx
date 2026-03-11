@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
 import { CheckCircle, XCircle, MinusCircle, ChevronRight, Save, Calendar, ChevronDown, ChevronUp, AlertCircle, Plus, Trash2, Settings } from 'lucide-react';
 import clsx from 'clsx';
-import { getMachines, getChecklistTemplateByModel, getChecklists, createChecklist } from '../lib/supabaseApi';
+import { getMachines, getChecklistTemplateByModel, createChecklist } from '../lib/supabaseApi';
 import { supabase } from '../lib/supabase';
 
 interface ChecklistItem {
@@ -43,34 +44,6 @@ function toChecklistObject(value: unknown): Record<string, ChecklistItem> {
 export default function Checklist() {
   const { user } = useAuth();
   const isAdmin = String(user?.role || '').trim().toLowerCase() === 'admin';
-  const [inspectionHistory, setInspectionHistory] = useState<any[]>([]);
-  const [filterDate, setFilterDate] = useState<string>('');
-  const [filterMachine, setFilterMachine] = useState<string>('');
-
-  // Carregar histórico do Supabase
-  useEffect(() => {
-    if (user) {
-      loadChecklists();
-    }
-  }, [user]);
-
-  const loadChecklists = async () => {
-    try {
-      const data = await getChecklists();
-      const userHistory = data.filter((insp: any) => insp.operator_id === user?.id);
-      setInspectionHistory(userHistory.map((insp: any) => ({
-        id: insp.id,
-        machine: machines.find(m => m.id === insp.machine_id)?.name || `Máquina ${insp.machine_id}`,
-        machine_id: insp.machine_id,
-        date: toSafeDate(insp.date || insp.created_at),
-        dateFormatted: toSafeDate(insp.date || insp.created_at).toLocaleString(),
-        data: toChecklistObject(typeof insp.data === 'string' ? JSON.parse(insp.data) : insp.data)
-      })));
-    } catch (err) {
-      console.error('Erro ao carregar checklists:', err);
-      toast.error('Erro ao carregar histórico de checklists');
-    }
-  };
 
   const [machines, setMachines] = useState<Machine[]>([]);
   const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
@@ -100,29 +73,6 @@ export default function Checklist() {
       setMachines(data);
       const models = Array.from(new Set(data.map((m: Machine) => m.model))) as string[];
       setAvailableModels(models);
-      if (user) {
-        const checklists = await getChecklists();
-        const userHistory = checklists.filter((insp: any) => insp.operator_id === user.id);
-        setInspectionHistory(
-          userHistory.map((insp: any) => {
-            let parsedData = {};
-            try {
-              parsedData = typeof insp.data === 'string' ? JSON.parse(insp.data) : (insp.data || {});
-            } catch {
-              parsedData = {};
-            }
-
-            return {
-              id: insp.id,
-              machine: data.find(m => m.id === insp.machine_id)?.name || `Máquina ${insp.machine_id}`,
-              machine_id: insp.machine_id,
-              date: toSafeDate(insp.date || insp.created_at),
-              dateFormatted: toSafeDate(insp.date || insp.created_at).toLocaleString(),
-              data: toChecklistObject(parsedData)
-            };
-          })
-        );
-      }
     } catch (err) {
       console.error('Erro ao carregar máquinas:', err);
       toast.error('Erro ao carregar máquinas');
@@ -341,15 +291,8 @@ export default function Checklist() {
       });
 
       toast.success('Checklist salvo com sucesso!');
-
-      try {
-        await loadChecklists();
-        setSelectedMachine(null);
-        setChecklistData({});
-      } catch (historyErr) {
-        console.error('Erro ao atualizar histórico:', historyErr);
-        toast.error('Checklist salvo, mas houve falha ao atualizar histórico nesta tela.');
-      }
+      setSelectedMachine(null);
+      setChecklistData({});
     } catch (err) {
       console.error('Erro:', err);
       toast.error('Erro ao salvar checklist. Verifique sua conexão.');
@@ -436,18 +379,26 @@ export default function Checklist() {
         <NokConfirmDialog />
         <Layout>
         {!selectedMachine ? (
-          // TELA DE SELEÇÃO + HISTÓRICO
+          // TELA DE SELEÇÃO
           <div className="max-w-6xl mx-auto">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
               <h2 className="text-2xl font-bold text-slate-900">Checklist Mensal</h2>
-              {isAdmin && (
-                <button
-                  onClick={openTemplateModal}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-5 py-2.5 rounded-xl shadow-lg shadow-emerald-600/20 flex items-center gap-2 transition-all"
+              <div className="flex items-center gap-2">
+                <Link
+                  to="/checklist-history"
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold px-5 py-2.5 rounded-xl flex items-center gap-2 transition-all"
                 >
-                  <Settings size={18} /> Cadastrar Inspecao
-                </button>
-              )}
+                  <Calendar size={18} /> Ver Histórico
+                </Link>
+                {isAdmin && (
+                  <button
+                    onClick={openTemplateModal}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-5 py-2.5 rounded-xl shadow-lg shadow-emerald-600/20 flex items-center gap-2 transition-all"
+                  >
+                    <Settings size={18} /> Cadastrar Inspecao
+                  </button>
+                )}
+              </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {machines.map(machine => (
@@ -463,118 +414,6 @@ export default function Checklist() {
                   </div>
                 </button>
               ))}
-            </div>
-
-            {/* Histórico de Checklist Mensal - Página Inicial */}
-            <div className="border-t border-slate-200 mt-8 pt-8">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-                <h3 className="text-lg font-bold text-slate-900">
-                  Histórico de Checklist Mensal
-                  {inspectionHistory.length > 0 && <span className="text-sm text-slate-500 font-normal ml-2">({inspectionHistory.filter(h => {
-                    const dateIso = toSafeDate(h.date).toISOString().split('T')[0];
-                    const matchDate = !filterDate || dateIso === filterDate;
-                    const matchMachine = !filterMachine || String(h.machine_id ?? '') === filterMachine;
-                    return matchDate && matchMachine;
-                  }).length})</span>}
-                </h3>
-
-                {/* Filtros */}
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <input
-                    type="date"
-                    value={filterDate}
-                    onChange={(e) => setFilterDate(e.target.value)}
-                    className="px-4 py-2 rounded-lg border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none"
-                    placeholder="Filtrar por data"
-                  />
-                  <select
-                    value={filterMachine}
-                    onChange={(e) => setFilterMachine(e.target.value)}
-                    className="px-4 py-2 rounded-lg border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none"
-                  >
-                    <option value="">Todas as máquinas</option>
-                    {Array.from(new Set(inspectionHistory.map(h => h.machine_id))).map(machineId => {
-                      if (machineId === null || machineId === undefined) return null;
-                      const machineHistory = inspectionHistory.find(h => h.machine_id === machineId);
-                      return (
-                        <option key={String(machineId)} value={String(machineId)}>
-                          {machineHistory?.machine}
-                        </option>
-                      );
-                    })}
-                  </select>
-                  {(filterDate || filterMachine) && (
-                    <button
-                      onClick={() => {
-                        setFilterDate('');
-                        setFilterMachine('');
-                      }}
-                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium transition-colors"
-                    >
-                      Limpar filtros
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Lista do Histórico */}
-              {inspectionHistory.length > 0 ? (
-                <ul className="space-y-4">
-                  {inspectionHistory.filter(insp => {
-                    const dateIso = toSafeDate(insp.date).toISOString().split('T')[0];
-                    const matchDate = !filterDate || dateIso === filterDate;
-                    const matchMachine = !filterMachine || String(insp.machine_id ?? '') === filterMachine;
-                    return matchDate && matchMachine;
-                  }).map((insp, idx) => (
-                    <li key={`${insp.id ?? 'noid'}-${idx}`} className="bg-white p-5 rounded-xl border border-slate-200 hover:shadow-md transition-shadow">
-                      <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-3">
-                        <div>
-                          <div className="font-bold text-slate-900">{insp.machine}</div>
-                          <div className="text-sm text-slate-500">📅 {insp.dateFormatted}</div>
-                        </div>
-                        <div className="text-xs bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full font-medium">
-                          ✓ Concluído
-                        </div>
-                      </div>
-
-                      {/* Itens inspecionados */}
-                      <details className="mt-3">
-                        <summary className="cursor-pointer text-emerald-600 font-semibold hover:text-emerald-700 transition-colors select-none">
-                          ▼ Ver itens inspecionados
-                        </summary>
-                        <ul className="mt-3 space-y-2 ml-2">
-                          {Object.entries(toChecklistObject(insp.data)).map(([item, val]: any) => {
-                            const status = val?.status ?? null;
-                            const observation = val?.observation ?? '';
-
-                            return (
-                            <li key={item} className="text-sm bg-slate-50 p-3 rounded-lg border border-slate-100">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className={`inline-block w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white ${status === 'ok' ? 'bg-emerald-500' :
-                                  status === 'nok' ? 'bg-red-500' :
-                                    'bg-slate-400'
-                                  }`}>
-                                  {typeof status === 'string' ? status.charAt(0).toUpperCase() : '-'}
-                                </span>
-                                <span className="font-medium text-slate-900">{item}</span>
-                              </div>
-                              {observation && (
-                                <div className="ml-8 text-xs text-slate-600 italic border-l-2 border-amber-300 pl-2">
-                                  💬 {observation}
-                                </div>
-                              )}
-                            </li>
-                          )})}
-                        </ul>
-                      </details>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="bg-slate-50 p-8 rounded-xl border border-slate-200 text-center text-slate-500">
-                  <p className="text-sm">Nenhuma inspeção realizada ainda</p>
-                </div>
-              )}
             </div>
           </div>
         ) : (

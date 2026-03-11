@@ -19,7 +19,8 @@ const MODULES = [
   { id: 2, name: 'Checklist Mensal', icon: '✅' },
   { id: 3, name: 'Manutenção Corretiva', icon: '🔧' },
   { id: 4, name: 'Histórico de O.S', icon: '📋' },
-  { id: 5, name: 'Gerenciar Usuários', icon: '👥' }
+  { id: 5, name: 'Gerenciar Usuários', icon: '👥' },
+  { id: 6, name: 'Histórico de Inspeção', icon: '🧾' }
 ];
 
 export default function UserManagement() {

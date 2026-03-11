@@ -61,6 +61,7 @@ Login com **admin / admin123**
 
 ## 📚 Documentação Completa
 
+- **[DOCUMENTACAO_COMPLETA_SISTEMA.md](DOCUMENTACAO_COMPLETA_SISTEMA.md)** - Documentação completa e consolidada do sistema
 - **[SUPABASE_SETUP.md](SUPABASE_SETUP.md)** - Setup detalhado do Supabase
 - **[DEPLOYMENT_VISUAL.md](DEPLOYMENT_VISUAL.md)** - Como fazer deploy (Vercel, Netlify, GitHub Pages)
 - **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Solução de problemas

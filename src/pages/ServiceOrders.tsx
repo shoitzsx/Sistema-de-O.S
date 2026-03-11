@@ -393,16 +393,16 @@ export default function ServiceOrders() {
 
   return (
     <Layout>
-      <div className="flex justify-between items-center mb-8">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-8">
         <div>
           <h2 className="text-2xl font-bold text-slate-900">Manutenção Corretiva</h2>
           <p className="text-slate-500">Gerenciamento de ordens de serviço</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-stretch gap-2 sm:gap-3 w-full sm:w-auto">
           {isAdmin && (
             <button
               onClick={openDeleteModal}
-              className="bg-red-600 hover:bg-red-700 text-white font-medium py-2.5 px-5 rounded-xl shadow-lg shadow-red-600/20 flex items-center gap-2 transition-all"
+              className="bg-red-600 hover:bg-red-700 text-white font-medium py-2.5 px-4 sm:px-5 rounded-xl shadow-lg shadow-red-600/20 flex items-center justify-center gap-2 transition-all w-full sm:w-auto"
             >
               Excluir O.S
             </button>
@@ -410,14 +410,14 @@ export default function ServiceOrders() {
           {isAdmin && (
             <button
               onClick={() => setIsPartsToolsModalOpen(true)}
-              className="bg-purple-600 hover:bg-purple-700 text-white font-medium py-2.5 px-5 rounded-xl shadow-lg shadow-purple-600/20 flex items-center gap-2 transition-all"
+              className="bg-purple-600 hover:bg-purple-700 text-white font-medium py-2.5 px-4 sm:px-5 rounded-xl shadow-lg shadow-purple-600/20 flex items-center justify-center gap-2 transition-all w-full sm:w-auto"
             >
               <Package size={20} /> Cadastrar Peça/Ferramenta
             </button>
           )}
           <button
             onClick={() => setIsModalOpen(true)}
-            className="bg-orange-500 hover:bg-orange-600 text-white font-medium py-2.5 px-5 rounded-xl shadow-lg shadow-orange-500/20 flex items-center gap-2 transition-all"
+            className="bg-orange-500 hover:bg-orange-600 text-white font-medium py-2.5 px-4 sm:px-5 rounded-xl shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2 transition-all w-full sm:w-auto"
           >
             <Plus size={20} /> Nova O.S.
           </button>
@@ -459,7 +459,7 @@ export default function ServiceOrders() {
               )}
             </div>
 
-            <div className="flex flex-col items-end gap-4 min-w-[200px]">
+            <div className="flex flex-col items-start md:items-end gap-4 w-full md:w-auto md:min-w-[200px]">
               <div className="text-right">
                 <div className="flex items-center gap-2 text-slate-500 text-sm justify-end">
                   <Clock size={16} />
@@ -521,7 +521,7 @@ export default function ServiceOrders() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-6"
+              className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-4 sm:p-6 max-h-[calc(100dvh-2rem)] overflow-y-auto"
             >
               <h3 className="text-xl font-bold text-slate-900 mb-2">Excluir Ordens de Serviço</h3>
               <p className="text-slate-500 mb-5">Selecione como deseja excluir e informe motivo + senha de admin.</p>
@@ -605,7 +605,7 @@ export default function ServiceOrders() {
                 </div>
               </div>
 
-              <div className="flex gap-3 mt-6">
+              <div className="flex flex-col sm:flex-row gap-3 mt-6">
                 <button
                   onClick={() => {
                     setIsDeleteModalOpen(false);
@@ -634,7 +634,7 @@ export default function ServiceOrders() {
                   <p className="text-red-700 text-sm mt-2">
                     <span className="font-semibold">Motivo:</span> {deleteReason.trim()}
                   </p>
-                  <div className="flex gap-2 mt-4">
+                  <div className="flex flex-col sm:flex-row gap-2 mt-4">
                     <button
                       onClick={() => setIsDeleteConfirmOpen(false)}
                       className="flex-1 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 py-2.5 rounded-lg"
@@ -663,7 +663,7 @@ export default function ServiceOrders() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6"
+              className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-4 sm:p-6 max-h-[calc(100dvh-2rem)] overflow-y-auto"
             >
               <h3 className="text-xl font-bold text-slate-900 mb-6">Abrir Ordem de Serviço</h3>
 
@@ -793,7 +793,7 @@ export default function ServiceOrders() {
                   </div>
                 </div>
 
-                <div className="flex gap-3 mt-6">
+                <div className="flex flex-col sm:flex-row gap-3 mt-6">
                   <button
                     type="button"
                     onClick={() => setIsModalOpen(false)}
@@ -824,7 +824,7 @@ export default function ServiceOrders() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto"
+              className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-4 sm:p-6 max-h-[calc(100dvh-2rem)] overflow-y-auto"
             >
               <h3 className="text-xl font-bold text-slate-900 mb-6">Cadastrar Peça / Ferramenta</h3>
 
@@ -910,7 +910,7 @@ export default function ServiceOrders() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6"
+              className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-4 sm:p-6 max-h-[calc(100dvh-2rem)] overflow-y-auto"
             >
               <h3 className="text-xl font-bold text-slate-900 mb-6">Finalizar Ordem de Serviço</h3>
               <p className="text-slate-500 mb-4">Descreva o que foi realizado (opcional).</p>
@@ -921,7 +921,7 @@ export default function ServiceOrders() {
                 rows={5}
                 placeholder="Ex: Substituído motor, realizado teste, tudo ok..."
               />
-              <div className="flex gap-3 mt-6">
+              <div className="flex flex-col sm:flex-row gap-3 mt-6">
                 <button
                   onClick={() => setFinishModalOpen(false)}
                   className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-3 rounded-xl transition-colors"
@@ -969,7 +969,7 @@ export default function ServiceOrders() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6"
+              className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-4 sm:p-6 max-h-[calc(100dvh-2rem)] overflow-y-auto"
             >
               <h3 className="text-xl font-bold text-slate-900 mb-6">Editar Relatório Final</h3>
               <p className="text-slate-500 mb-4">Atualize as informações da OS #{editingOrder.id.toString().padStart(4, '0')}</p>
@@ -996,7 +996,7 @@ export default function ServiceOrders() {
               </div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Relatório Final (opcional)</label>
               <textarea value={editReport} onChange={e => setEditReport(e.target.value)} rows={5} className="w-full p-3 rounded-lg border border-slate-200 mb-4" />
-              <div className="flex gap-3">
+              <div className="flex flex-col sm:flex-row gap-3">
                 <button onClick={() => setEditReportModalOpen(false)} className="flex-1 bg-slate-100 hover:bg-slate-200 py-3 rounded-lg">Cancelar</button>
                 <button onClick={async () => {
                   if (!editingOrder) return;

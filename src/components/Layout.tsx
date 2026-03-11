@@ -73,12 +73,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         aria-label="Notificações"
       />
       <header className="bg-emerald-800 text-white shadow-md">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2 sm:py-0 sm:h-16 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             {/* Botão Voltar */}
             <button
               onClick={handleGoBack}
-              className="p-2 hover:bg-emerald-700 rounded-full transition-colors mr-2"
+              className="p-2 hover:bg-emerald-700 rounded-full transition-colors"
               title="Voltar"
             >
               <ArrowLeft size={20} />
@@ -86,13 +86,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <div className="w-8 h-8 bg-white/10 rounded-full flex items-center justify-center">
               <span className="font-bold text-lg">A</span>
             </div>
-            <h1 className="text-xl font-bold tracking-tight">Águia Florestal</h1>
+            <h1 className="text-base sm:text-xl font-bold tracking-tight truncate">Águia Florestal</h1>
           </div>
           
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 bg-emerald-900/50 px-3 py-1.5 rounded-full">
+          <div className="flex items-center gap-2 sm:gap-4">
+            <div className="flex items-center gap-2 bg-emerald-900/50 px-2.5 sm:px-3 py-1.5 rounded-full max-w-[52vw] sm:max-w-none">
               <UserIcon size={16} className="text-emerald-200" />
-              <span className="text-sm font-medium">{user?.name}</span>
+              <span className="text-xs sm:text-sm font-medium truncate">{user?.name}</span>
             </div>
             <button 
               onClick={logout}
@@ -113,7 +113,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
       </div>
       
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-5 sm:py-8">
         {children}
       </main>
     </div>

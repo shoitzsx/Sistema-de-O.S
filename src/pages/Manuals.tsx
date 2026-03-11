@@ -187,7 +187,7 @@ export default function Manuals() {
           <p className="text-slate-500">Biblioteca de equipamentos e instruções</p>
         </div>
         
-        <div className="flex gap-4 w-full md:w-auto">
+        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 w-full md:w-auto">
           <div className="relative w-full md:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
             <input 
@@ -201,7 +201,7 @@ export default function Manuals() {
           {user?.role === 'admin' && (
             <button
               onClick={() => setIsMachineModalOpen(true)}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 px-4 rounded-xl shadow-lg shadow-emerald-600/20 flex items-center gap-2 transition-all whitespace-nowrap"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 px-4 rounded-xl shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 transition-all whitespace-nowrap w-full sm:w-auto"
             >
               <Upload size={20} /> Novo Equipamento
             </button>
@@ -341,10 +341,10 @@ export default function Manuals() {
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setSelectedMachine(null)}>
             <motion.div 
               layoutId={`card-${selectedMachine.id}`}
-              className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden"
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden max-h-[calc(100dvh-2rem)] overflow-y-auto"
               onClick={e => e.stopPropagation()}
             >
-              <div className="relative h-64 bg-slate-100">
+              <div className="relative h-48 sm:h-64 bg-slate-100">
                 <img 
                   src={selectedMachine.image_url || 'https://picsum.photos/400/300'} 
                   alt={selectedMachine.name}
@@ -358,11 +358,11 @@ export default function Manuals() {
                 </button>
               </div>
               
-              <div className="p-8">
-                <div className="flex justify-between items-start mb-6">
+              <div className="p-4 sm:p-8">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-6">
                   <div>
-                    <h2 className="text-3xl font-bold text-slate-900 mb-2">{selectedMachine.name}</h2>
-                    <div className="flex items-center gap-4 text-sm text-slate-500">
+                    <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-2">{selectedMachine.name}</h2>
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-sm text-slate-500">
                       <span className="bg-slate-100 px-3 py-1 rounded-full">{selectedMachine.model}</span>
                       <span>Atualizado em: {new Date().toLocaleDateString()}</span>
                     </div>
@@ -385,7 +385,7 @@ export default function Manuals() {
                   </p>
                   
                   <h4 className="text-lg font-semibold text-slate-800 mt-6 mb-2">Especificações Rápidas</h4>
-                  <ul className="grid grid-cols-2 gap-2 text-sm text-slate-600">
+                  <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-slate-600">
                     {selectedMachine.quick_specs ? (() => {
                       try {
                         const specs = typeof selectedMachine.quick_specs === 'string' 

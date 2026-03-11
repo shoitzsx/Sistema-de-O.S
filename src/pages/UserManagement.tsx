@@ -145,7 +145,7 @@ export default function UserManagement() {
   return (
     <Layout>
       <div className="max-w-7xl mx-auto">
-        <div className="mb-8 flex justify-between items-center">
+        <div className="mb-8 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
           <div>
             <h2 className="text-3xl font-bold text-slate-900">Gestão de Usuários</h2>
             <p className="text-slate-500 mt-1">Crie e gerencie usuários do sistema</p>
@@ -155,7 +155,7 @@ export default function UserManagement() {
               resetForm();
               setIsModalOpen(true);
             }}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 px-6 rounded-xl shadow-lg shadow-emerald-600/20 flex items-center gap-2 transition-all"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 px-6 rounded-xl shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 transition-all w-full sm:w-auto"
           >
             <UserPlus size={20} /> Novo Usuário
           </button>
@@ -178,7 +178,7 @@ export default function UserManagement() {
                 exit={{ opacity: 0, y: -10 }}
                 className="bg-white p-5 rounded-xl border border-slate-100 hover:shadow-md transition-all"
               >
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                       <div className={`px-3 py-1 text-xs font-semibold rounded-full ${
@@ -206,7 +206,7 @@ export default function UserManagement() {
                     </div>
                   </div>
                   
-                  <div className="flex gap-2 ml-4">
+                  <div className="flex gap-2 sm:ml-4 self-end sm:self-auto">
                     <button
                       onClick={() => handleEdit(u)}
                       className="p-2.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -246,7 +246,7 @@ export default function UserManagement() {
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.95, opacity: 0 }}
                 onClick={e => e.stopPropagation()}
-                className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6"
+                className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-4 sm:p-6 max-h-[calc(100dvh-2rem)] overflow-y-auto"
               >
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-2xl font-bold text-slate-900">
@@ -342,7 +342,7 @@ export default function UserManagement() {
                     </div>
                   </div>
 
-                  <div className="flex gap-3 pt-4">
+                  <div className="flex flex-col sm:flex-row gap-3 pt-4">
                     <button
                       type="button"
                       onClick={() => {

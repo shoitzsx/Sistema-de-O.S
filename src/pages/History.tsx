@@ -223,25 +223,25 @@ export default function History() {
   return (
     <Layout>
       <div className="mb-8">
-        <div className="flex justify-between items-start mb-6">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-6">
           <div>
             <h2 className="text-2xl font-bold text-slate-900">Histórico de Ordens de Serviço</h2>
             <p className="text-slate-500">
               {isAdmin ? 'Todas as O.S criadas no sistema' : 'Suas ordens de serviço'}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-stretch gap-2 w-full sm:w-auto">
             {isAdmin && (
               <button
                 onClick={openDeleteModal}
-                className="bg-red-600 hover:bg-red-700 text-white font-medium py-2.5 px-4 rounded-xl shadow-lg shadow-red-600/20 flex items-center gap-2 transition-all"
+                className="bg-red-600 hover:bg-red-700 text-white font-medium py-2.5 px-4 rounded-xl shadow-lg shadow-red-600/20 flex items-center justify-center gap-2 transition-all w-full sm:w-auto"
               >
                 Excluir O.S
               </button>
             )}
             <button
               onClick={exportToCSV}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 px-4 rounded-xl shadow-lg shadow-emerald-600/20 flex items-center gap-2 transition-all"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 px-4 rounded-xl shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 transition-all w-full sm:w-auto"
             >
               <Download size={18} /> Exportar CSV
             </button>
@@ -306,7 +306,7 @@ export default function History() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-6"
+              className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-4 sm:p-6 max-h-[calc(100dvh-2rem)] overflow-y-auto"
             >
               <h3 className="text-xl font-bold text-slate-900 mb-2">Excluir Ordens de Serviço</h3>
               <p className="text-slate-500 mb-5">Selecione como deseja excluir e informe motivo + senha de admin.</p>
@@ -390,7 +390,7 @@ export default function History() {
                 </div>
               </div>
 
-              <div className="flex gap-3 mt-6">
+              <div className="flex flex-col sm:flex-row gap-3 mt-6">
                 <button
                   onClick={() => {
                     setIsDeleteModalOpen(false);
@@ -419,7 +419,7 @@ export default function History() {
                   <p className="text-red-700 text-sm mt-2">
                     <span className="font-semibold">Motivo:</span> {deleteReason.trim()}
                   </p>
-                  <div className="flex gap-2 mt-4">
+                  <div className="flex flex-col sm:flex-row gap-2 mt-4">
                     <button
                       onClick={() => setIsDeleteConfirmOpen(false)}
                       className="flex-1 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 py-2.5 rounded-lg"

@@ -106,7 +106,26 @@ npm run dev      # Desenvolvimento
 npm run build    # Build para produção
 npm run preview  # Preview do build
 npm run lint     # Verificar tipos TypeScript
+npm run mobile:sync    # Build + sincroniza Android/iOS
+npm run mobile:android # Abre projeto Android no Android Studio
+npm run mobile:ios     # Abre projeto iOS no Xcode (somente macOS)
 ```
+
+---
+
+## 📱 App Android e iOS
+
+O projeto agora tambem pode ser distribuido como aplicativo nativo com Capacitor, mantendo o site web normalmente.
+
+### Android
+- Gerar/sincronizar app: `npm run mobile:sync`
+- Abrir no Android Studio: `npm run mobile:android`
+- Build final (AAB/APK) e publicado pela Play Store via Android Studio
+
+### iOS
+- Gerar/sincronizar app: `npm run mobile:sync`
+- Abrir no Xcode: `npm run mobile:ios`
+- Publicacao na App Store exige macOS + Xcode
 
 ---
 

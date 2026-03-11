@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Aguia Florestal</string>
+    <string name="title_activity_main">Aguia Florestal</string>
+    <string name="package_name">com.aguiaflorestal.app</string>
+    <string name="custom_url_scheme">com.aguiaflorestal.app</string>
+</resources>

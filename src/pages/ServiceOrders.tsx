@@ -342,8 +342,15 @@ export default function ServiceOrders() {
 
   const calculateDuration = (start: string, end: string | null) => {
     try {
-      const startTime = new Date(start).getTime();
-      const endTime = end ? new Date(end).getTime() : Date.now();
+      const parseTimestamp = (value: string) => {
+        // Supabase TIMESTAMP (without timezone) may return ISO-like strings without Z.
+        // Treat them as UTC to avoid local-time shifts (e.g., +3h / -3h drift).
+        const hasTimezone = /[zZ]|[+-]\d{2}:?\d{2}$/.test(value);
+        return new Date(hasTimezone ? value : `${value}Z`).getTime();
+      };
+
+      const startTime = parseTimestamp(start);
+      const endTime = end ? parseTimestamp(end) : Date.now();
       // If there is any clock/timezone skew, do not jump backwards/forwards.
       const diff = Math.max(0, endTime - startTime);
 

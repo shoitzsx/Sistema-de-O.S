@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { CheckCircle } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { getChecklists, getMachines } from '../lib/supabaseApi';
+import { getOfflineChecklistSyncSummary, processChecklistSyncQueue } from '../lib/offlineChecklist';
 
 interface ChecklistItem {
   status: 'ok' | 'nok' | 'na' | null;
@@ -17,13 +18,14 @@ interface Machine {
 }
 
 interface InspectionHistoryItem {
-  id: number;
+  id: number | string;
   machine: string;
   machine_id: number;
   operator_id: number;
   date: Date;
   dateFormatted: string;
   data: Record<string, ChecklistItem>;
+  syncStatus?: 'pending' | 'syncing' | 'synced' | 'error';
 }
 
 function toSafeDate(value: unknown): Date {
@@ -52,10 +54,25 @@ export default function ChecklistHistory() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterDate, setFilterDate] = useState<string>('');
   const [filterMachine, setFilterMachine] = useState<string>('');
+  const [syncSummary, setSyncSummary] = useState({ pending: 0, error: 0, online: true });
 
   useEffect(() => {
     loadData();
   }, [user]);
+
+  useEffect(() => {
+    const refreshSyncSummary = async () => {
+      const summary = await getOfflineChecklistSyncSummary();
+      setSyncSummary(summary);
+    };
+
+    void refreshSyncSummary();
+    const interval = setInterval(() => {
+      void refreshSyncSummary();
+    }, 8000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   const loadData = async () => {
     try {
@@ -85,7 +102,8 @@ export default function ChecklistHistory() {
           operator_id: insp.operator_id,
           date: inspectionDate,
           dateFormatted: inspectionDate.toLocaleString('pt-BR'),
-          data: toChecklistObject(parsedData)
+          data: toChecklistObject(parsedData),
+          syncStatus: insp.__sync || 'synced'
         };
       });
 
@@ -122,6 +140,34 @@ export default function ChecklistHistory() {
             <p className="text-slate-500">
               {isAdmin ? 'Todas as inspeções realizadas no sistema' : 'Suas inspeções realizadas'}
             </p>
+          </div>
+        </div>
+
+        <div className="mb-6 rounded-xl border border-slate-200 bg-white px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-slate-800">Status de sincronização</p>
+            <p className="text-xs text-slate-600">
+              {syncSummary.online ? 'Conectado à internet' : 'Sem internet no momento'}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs bg-amber-100 text-amber-800 px-2.5 py-1 rounded-full">
+              Pendentes: {syncSummary.pending}
+            </span>
+            <span className="text-xs bg-red-100 text-red-700 px-2.5 py-1 rounded-full">
+              Erros: {syncSummary.error}
+            </span>
+            <button
+              onClick={async () => {
+                await processChecklistSyncQueue();
+                await loadData();
+                const summary = await getOfflineChecklistSyncSummary();
+                setSyncSummary(summary);
+              }}
+              className="text-xs font-semibold bg-slate-800 hover:bg-slate-900 text-white px-3 py-1.5 rounded-lg"
+            >
+              Sincronizar agora
+            </button>
           </div>
         </div>
 
@@ -186,9 +232,19 @@ export default function ChecklistHistory() {
                       <div className="text-xs text-slate-500 mt-1">Operador ID: {insp.operator_id}</div>
                     )}
                   </div>
-                  <div className="text-xs bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full font-medium flex items-center gap-1">
-                    <CheckCircle size={14} /> Concluído
-                  </div>
+                  {insp.syncStatus === 'synced' ? (
+                    <div className="text-xs bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full font-medium flex items-center gap-1">
+                      <CheckCircle size={14} /> Sincronizado
+                    </div>
+                  ) : insp.syncStatus === 'error' ? (
+                    <div className="text-xs bg-red-100 text-red-700 px-3 py-1 rounded-full font-medium">
+                      Erro de envio
+                    </div>
+                  ) : (
+                    <div className="text-xs bg-amber-100 text-amber-800 px-3 py-1 rounded-full font-medium">
+                      Pendente de envio
+                    </div>
+                  )}
                 </div>
 
                 <details className="mt-3">

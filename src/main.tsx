@@ -1,6 +1,9 @@
 import {createRoot} from 'react-dom/client';
+import { registerSW } from 'virtual:pwa-register';
 import App from './App.tsx';
 import './index.css';
+import { startChecklistSyncWorker } from './lib/offlineChecklist';
+import { startOfflineSyncWorker } from './lib/offlineSync';
 
 // Defensive patch: avoid hard crash when external mutations desync DOM parent/child.
 if (typeof Node !== 'undefined') {
@@ -23,3 +26,7 @@ if (typeof Node !== 'undefined') {
 createRoot(document.getElementById('root')!).render(
   <App />
 );
+
+startChecklistSyncWorker();
+startOfflineSyncWorker();
+registerSW({ immediate: true });

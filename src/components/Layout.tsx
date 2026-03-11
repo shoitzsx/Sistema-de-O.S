@@ -1,13 +1,55 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { LogOut, User as UserIcon, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import { getOfflineChecklistSyncSummary, processChecklistSyncQueue } from '../lib/offlineChecklist';
+import { getOfflineSyncSummary, processOfflineSyncQueue } from '../lib/offlineSync';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [syncInfo, setSyncInfo] = useState({ online: true, pending: 0, errors: 0 });
+
+  useEffect(() => {
+    const refresh = async () => {
+      const [globalSummary, checklistSummary] = await Promise.all([
+        Promise.resolve(getOfflineSyncSummary()),
+        getOfflineChecklistSyncSummary(),
+      ]);
+
+      setSyncInfo({
+        online: globalSummary.online && checklistSummary.online,
+        pending: globalSummary.pending + checklistSummary.pending,
+        errors: globalSummary.error + checklistSummary.error,
+      });
+    };
+
+    void refresh();
+    const interval = setInterval(() => {
+      void refresh();
+    }, 7000);
+
+    const handleOnline = () => {
+      void processOfflineSyncQueue();
+      void processChecklistSyncQueue();
+      void refresh();
+    };
+
+    const handleOffline = () => {
+      void refresh();
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   const handleGoBack = () => {
     // Tenta voltar uma página no histórico; se não for possível, vai para a dashboard
@@ -64,6 +106,17 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </header>
+
+      <div className={`border-b px-4 sm:px-6 lg:px-8 py-2 text-xs ${syncInfo.online ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-900'}`}>
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+          <span>
+            {syncInfo.online ? 'Conectado' : 'Modo offline'}
+          </span>
+          <span>
+            Pendentes: {syncInfo.pending} | Erros: {syncInfo.errors}
+          </span>
+        </div>
+      </div>
       
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {children}

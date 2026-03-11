@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { User as UserIcon, Lock, ArrowRight } from 'lucide-react';
 import { motion } from 'motion/react';
-import { supabase } from '../lib/supabase';
+import { getUsers, loginUser } from '../lib/supabaseApi';
 
 interface UserSummary {
   id: number;
@@ -26,15 +26,16 @@ export default function Login() {
 
   const loadUsers = async () => {
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('id, name, username, role');
-
-      if (error) throw error;
-      setUsers(data || []);
+      const data = await getUsers();
+      setUsers((data || []).map((user) => ({
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        role: user.role,
+      })));
     } catch (err) {
       console.error('Erro ao carregar usuários:', err);
-      alert('Erro ao conectar ao servidor. Verifique a conexão com o Supabase.');
+      setError('Não foi possível carregar usuários.');
     }
   };
 
@@ -43,14 +44,9 @@ export default function Login() {
     if (!selectedUser) return;
 
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('username', selectedUser.username)
-        .eq('password', password)
-        .single();
+      const data = await loginUser(selectedUser.username, password);
 
-      if (error || !data) {
+      if (!data) {
         setError('Senha incorreta');
         return;
       }
@@ -60,7 +56,7 @@ export default function Login() {
         name: data.name,
         username: data.username,
         role: data.role,
-        allowed_modules: JSON.parse(data.allowed_modules || '[]')
+        allowed_modules: data.allowed_modules || []
       });
       navigate('/');
     } catch (err) {

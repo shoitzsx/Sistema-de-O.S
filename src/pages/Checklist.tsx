@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { CheckCircle, XCircle, MinusCircle, ChevronRight, Save, Calendar, ChevronDown, ChevronUp, AlertCircle, Plus, Trash2, Settings } from 'lucide-react';
 import clsx from 'clsx';
 import { getMachines, getChecklistTemplateByModel, createChecklist } from '../lib/supabaseApi';
+import { getOfflineChecklistSyncSummary, processChecklistSyncQueue } from '../lib/offlineChecklist';
 import { supabase } from '../lib/supabase';
 
 interface ChecklistItem {
@@ -62,9 +63,41 @@ export default function Checklist() {
   const [newItemByCategory, setNewItemByCategory] = useState<Record<number, string>>({});
   const [nokItemsToConfirm, setNokItemsToConfirm] = useState<string[]>([]);
   const [showNokConfirmDialog, setShowNokConfirmDialog] = useState(false);
+  const [syncSummary, setSyncSummary] = useState({ pending: 0, error: 0, online: true });
 
   useEffect(() => {
     loadMachines();
+  }, []);
+
+  useEffect(() => {
+    const refreshSyncSummary = async () => {
+      const summary = await getOfflineChecklistSyncSummary();
+      setSyncSummary(summary);
+    };
+
+    void refreshSyncSummary();
+
+    const interval = setInterval(() => {
+      void refreshSyncSummary();
+    }, 8000);
+
+    const handleOnline = () => {
+      void processChecklistSyncQueue();
+      void refreshSyncSummary();
+    };
+
+    const handleOffline = () => {
+      void refreshSyncSummary();
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, []);
 
   const loadMachines = async () => {
@@ -282,7 +315,7 @@ export default function Checklist() {
     setIsSubmitting(true);
     try {
       // Save directly to Supabase using createChecklist function
-      await createChecklist({
+      const result = await createChecklist({
         machine_id: selectedMachine.id,
         operator_id: user.id,
         date: new Date().toISOString(),
@@ -290,7 +323,14 @@ export default function Checklist() {
         status: 'completed'
       });
 
-      toast.success('Checklist salvo com sucesso!');
+      if (result?.__sync === 'pending') {
+        toast.success('Checklist salvo no dispositivo. Será enviado quando houver internet.');
+      } else {
+        toast.success('Checklist salvo e sincronizado com sucesso!');
+      }
+
+      const summary = await getOfflineChecklistSyncSummary();
+      setSyncSummary(summary);
       setSelectedMachine(null);
       setChecklistData({});
     } catch (err) {
@@ -398,6 +438,43 @@ export default function Checklist() {
                     <Settings size={18} /> Cadastrar Inspecao
                   </button>
                 )}
+              </div>
+            </div>
+
+            <div className={clsx(
+              'mb-6 rounded-xl border px-4 py-3 flex flex-wrap items-center justify-between gap-3',
+              syncSummary.online ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'
+            )}>
+              <div>
+                <p className="text-sm font-semibold text-slate-800">
+                  {syncSummary.online ? 'Online' : 'Offline'}
+                </p>
+                <p className="text-xs text-slate-600">
+                  {syncSummary.online
+                    ? 'Os checklists pendentes serao sincronizados automaticamente.'
+                    : 'Os checklists serao salvos no dispositivo e enviados ao reconectar.'}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs bg-slate-100 text-slate-700 px-2.5 py-1 rounded-full">
+                  Pendentes: {syncSummary.pending}
+                </span>
+                <span className={clsx(
+                  'text-xs px-2.5 py-1 rounded-full',
+                  syncSummary.error > 0 ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'
+                )}>
+                  Erros: {syncSummary.error}
+                </span>
+                <button
+                  onClick={async () => {
+                    await processChecklistSyncQueue();
+                    const summary = await getOfflineChecklistSyncSummary();
+                    setSyncSummary(summary);
+                  }}
+                  className="text-xs font-semibold bg-slate-800 hover:bg-slate-900 text-white px-3 py-1.5 rounded-lg"
+                >
+                  Sincronizar agora
+                </button>
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

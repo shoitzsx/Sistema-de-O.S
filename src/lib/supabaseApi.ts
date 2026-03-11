@@ -1,4 +1,24 @@
 import { supabase, ServiceOrder, Machine, PartTool, User } from './supabase';
+import {
+  getUnsyncedChecklists,
+  processChecklistSyncQueue,
+  queueChecklistForSync,
+} from './offlineChecklist';
+import {
+  getCachedRows,
+  isBrowserOnline,
+  processOfflineSyncQueue,
+  queueCloseServiceOrder,
+  queueDelete,
+  queueDeleteManyServiceOrders,
+  queueDeleteServiceOrdersByScope,
+  queueInsert,
+  queueUpdate,
+  queueUpsertChecklistTemplate,
+  setCachedRows,
+  upsertCachedRow,
+  removeCachedRow,
+} from './offlineSync';
 
 function safeParseJson<T>(value: unknown, fallback: T): T {
   if (value === null || value === undefined) return fallback;
@@ -10,9 +30,37 @@ function safeParseJson<T>(value: unknown, fallback: T): T {
   }
 }
 
+function normalizeUser(user: any): User {
+  return {
+    ...user,
+    allowed_modules: safeParseJson<number[]>(user.allowed_modules, []),
+  };
+}
+
+function normalizeMachine(machine: any): Machine {
+  return {
+    ...machine,
+    quick_specs: safeParseJson<string[]>(machine.quick_specs, []),
+  };
+}
+
+function normalizeServiceOrder(order: any): ServiceOrder {
+  return {
+    ...order,
+    tools: safeParseJson<string[]>(order.tools, []),
+    used_parts_tools: safeParseJson<number[]>(order.used_parts_tools, []),
+  };
+}
+
 // ===== USERS =====
 export async function loginUser(username: string, password: string): Promise<User | null> {
   try {
+    if (!isBrowserOnline()) {
+      const cachedUsers = getCachedRows<any>('users').map(normalizeUser);
+      const offlineMatch = cachedUsers.find((u: any) => u.username === username && (u as any).password === password);
+      return offlineMatch || null;
+    }
+
     const { data, error } = await supabase
       .from('users')
       .select('*')
@@ -25,31 +73,39 @@ export async function loginUser(username: string, password: string): Promise<Use
       return null;
     }
 
-    return data ? {
-      ...data,
-      allowed_modules: JSON.parse(data.allowed_modules || '[]')
-    } : null;
+    if (!data) return null;
+
+    const normalized = normalizeUser(data);
+    upsertCachedRow('users', data as any);
+    return normalized;
   } catch (err) {
     console.error('Erro ao fazer login:', err);
+
+    const cachedUsers = getCachedRows<any>('users').map(normalizeUser);
+    const offlineMatch = cachedUsers.find((u: any) => u.username === username && (u as any).password === password);
+    if (offlineMatch) return offlineMatch;
+
     return null;
   }
 }
 
 export async function getUsers(): Promise<User[]> {
+  if (!isBrowserOnline()) {
+    return getCachedRows<any>('users').map(normalizeUser);
+  }
+
   try {
     const { data, error } = await supabase
       .from('users')
       .select('*');
 
     if (error) throw error;
-    
-    return (data || []).map(user => ({
-      ...user,
-      allowed_modules: JSON.parse(user.allowed_modules || '[]')
-    }));
+
+    setCachedRows('users', data || []);
+    return (data || []).map(normalizeUser);
   } catch (err) {
     console.error('Erro ao buscar usuários:', err);
-    return [];
+    return getCachedRows<any>('users').map(normalizeUser);
   }
 }
 
@@ -60,6 +116,13 @@ export async function createUser(user: Omit<User & { password: string }, 'id'>):
       allowed_modules: JSON.stringify(user.allowed_modules || [])
     };
 
+    if (!isBrowserOnline()) {
+      const tempId = queueInsert('users', 'users', userData as any);
+      const localRow = { id: tempId, ...userData } as any;
+      upsertCachedRow('users', localRow);
+      return normalizeUser(localRow);
+    }
+
     const { data, error } = await supabase
       .from('users')
       .insert([userData])
@@ -68,10 +131,11 @@ export async function createUser(user: Omit<User & { password: string }, 'id'>):
 
     if (error) throw error;
 
-    return data ? {
-      ...data,
-      allowed_modules: JSON.parse(data.allowed_modules || '[]')
-    } : null;
+    if (!data) return null;
+
+    upsertCachedRow('users', data as any);
+    void processOfflineSyncQueue();
+    return normalizeUser(data);
   } catch (err) {
     console.error('Erro ao criar usuário:', err);
     return null;
@@ -88,6 +152,18 @@ export async function updateUser(id: number, updates: Partial<User & { password?
     if (updates.role !== undefined) updateData.role = updates.role;
     if (updates.allowed_modules !== undefined) updateData.allowed_modules = JSON.stringify(updates.allowed_modules || []);
 
+    if (!isBrowserOnline()) {
+      queueUpdate('users', 'users', id, updateData);
+      const cached = getCachedRows<any>('users');
+      const existing = cached.find((u) => u.id === id);
+      if (existing) {
+        const merged = { ...existing, ...updateData };
+        upsertCachedRow('users', merged);
+        return normalizeUser(merged);
+      }
+      return null;
+    }
+
     const { data, error } = await supabase
       .from('users')
       .update(updateData)
@@ -97,10 +173,11 @@ export async function updateUser(id: number, updates: Partial<User & { password?
 
     if (error) throw error;
 
-    return data ? {
-      ...data,
-      allowed_modules: JSON.parse(data.allowed_modules || '[]')
-    } : null;
+    if (!data) return null;
+
+    upsertCachedRow('users', data as any);
+    void processOfflineSyncQueue();
+    return normalizeUser(data);
   } catch (err) {
     console.error('Erro ao atualizar usuário:', err);
     return null;
@@ -109,12 +186,20 @@ export async function updateUser(id: number, updates: Partial<User & { password?
 
 export async function deleteUser(id: number): Promise<boolean> {
   try {
+    if (!isBrowserOnline()) {
+      queueDelete('users', 'users', id);
+      removeCachedRow<any>('users', id);
+      return true;
+    }
+
     const { error } = await supabase
       .from('users')
       .delete()
       .eq('id', id);
 
     if (error) throw error;
+    removeCachedRow<any>('users', id);
+    void processOfflineSyncQueue();
     return true;
   } catch (err) {
     console.error('Erro ao deletar usuário:', err);
@@ -124,24 +209,33 @@ export async function deleteUser(id: number): Promise<boolean> {
 
 // ===== MACHINES =====
 export async function getMachines(): Promise<Machine[]> {
+  if (!isBrowserOnline()) {
+    return getCachedRows<any>('machines').map(normalizeMachine);
+  }
+
   try {
     const { data, error } = await supabase
       .from('machines')
       .select('*');
 
     if (error) throw error;
-    return (data || []).map(machine => ({
-      ...machine,
-      quick_specs: safeParseJson<string[]>(machine.quick_specs, [])
-    }));
+    setCachedRows('machines', data || []);
+    return (data || []).map(normalizeMachine);
   } catch (err) {
     console.error('Erro ao buscar máquinas:', err);
-    return [];
+    return getCachedRows<any>('machines').map(normalizeMachine);
   }
 }
 
 export async function createMachine(machine: Omit<Machine, 'id'>): Promise<Machine | null> {
   try {
+    if (!isBrowserOnline()) {
+      const tempId = queueInsert('machines', 'machines', machine as any);
+      const localRow = { id: tempId, ...machine };
+      upsertCachedRow('machines', localRow as any);
+      return normalizeMachine(localRow);
+    }
+
     const { data, error } = await supabase
       .from('machines')
       .insert([machine])
@@ -149,12 +243,11 @@ export async function createMachine(machine: Omit<Machine, 'id'>): Promise<Machi
       .single();
 
     if (error) throw error;
-    return data
-      ? {
-          ...data,
-          quick_specs: safeParseJson<string[]>(data.quick_specs, [])
-        }
-      : null;
+    if (!data) return null;
+
+    upsertCachedRow('machines', data as any);
+    void processOfflineSyncQueue();
+    return normalizeMachine(data);
   } catch (err) {
     console.error('Erro ao criar máquina:', err);
     return null;
@@ -163,21 +256,33 @@ export async function createMachine(machine: Omit<Machine, 'id'>): Promise<Machi
 
 // ===== PARTS/TOOLS =====
 export async function getPartsTools(): Promise<PartTool[]> {
+  if (!isBrowserOnline()) {
+    return getCachedRows<PartTool>('parts_tools');
+  }
+
   try {
     const { data, error } = await supabase
       .from('parts_tools')
       .select('*');
 
     if (error) throw error;
+    setCachedRows('parts_tools', data || []);
     return data || [];
   } catch (err) {
     console.error('Erro ao buscar peças/ferramentas:', err);
-    return [];
+    return getCachedRows<PartTool>('parts_tools');
   }
 }
 
 export async function createPartTool(item: Omit<PartTool, 'id'>): Promise<PartTool | null> {
   try {
+    if (!isBrowserOnline()) {
+      const tempId = queueInsert('parts_tools', 'parts_tools', item as any);
+      const localRow = { id: tempId, ...item } as PartTool;
+      upsertCachedRow('parts_tools', localRow as any);
+      return localRow;
+    }
+
     const { data, error } = await supabase
       .from('parts_tools')
       .insert([item])
@@ -185,6 +290,8 @@ export async function createPartTool(item: Omit<PartTool, 'id'>): Promise<PartTo
       .single();
 
     if (error) throw error;
+    if (data) upsertCachedRow('parts_tools', data as any);
+    void processOfflineSyncQueue();
     return data;
   } catch (err) {
     console.error('Erro ao criar peça/ferramenta:', err);
@@ -194,12 +301,20 @@ export async function createPartTool(item: Omit<PartTool, 'id'>): Promise<PartTo
 
 export async function deletePartTool(id: number): Promise<boolean> {
   try {
+    if (!isBrowserOnline()) {
+      queueDelete('parts_tools', 'parts_tools', id);
+      removeCachedRow<any>('parts_tools', id);
+      return true;
+    }
+
     const { error } = await supabase
       .from('parts_tools')
       .delete()
       .eq('id', id);
 
     if (error) throw error;
+    removeCachedRow<any>('parts_tools', id);
+    void processOfflineSyncQueue();
     return true;
   } catch (err) {
     console.error('Erro ao deletar peça/ferramenta:', err);
@@ -209,6 +324,10 @@ export async function deletePartTool(id: number): Promise<boolean> {
 
 // ===== SERVICE ORDERS =====
 export async function getServiceOrders(): Promise<ServiceOrder[]> {
+  if (!isBrowserOnline()) {
+    return getCachedRows<any>('service_orders').map(normalizeServiceOrder);
+  }
+
   try {
     const { data, error } = await supabase
       .from('service_orders')
@@ -217,14 +336,11 @@ export async function getServiceOrders(): Promise<ServiceOrder[]> {
 
     if (error) throw error;
     
-    return (data || []).map(order => ({
-      ...order,
-      tools: safeParseJson<string[]>(order.tools, []),
-      used_parts_tools: safeParseJson<number[]>(order.used_parts_tools, [])
-    }));
+    setCachedRows('service_orders', data || []);
+    return (data || []).map(normalizeServiceOrder);
   } catch (err) {
     console.error('Erro ao buscar ordens de serviço:', err);
-    return [];
+    return getCachedRows<any>('service_orders').map(normalizeServiceOrder);
   }
 }
 
@@ -236,6 +352,19 @@ export async function createServiceOrder(order: Omit<ServiceOrder, 'id' | 'creat
       used_parts_tools: JSON.stringify(order.used_parts_tools || [])
     };
 
+    if (!isBrowserOnline()) {
+      const tempId = queueInsert('service_orders', 'service_orders', orderToInsert as any);
+      const nowIso = new Date().toISOString();
+      const localRow = {
+        ...orderToInsert,
+        id: tempId,
+        created_at: nowIso,
+        updated_at: nowIso,
+      } as any;
+      upsertCachedRow('service_orders', localRow);
+      return normalizeServiceOrder(localRow);
+    }
+
     const { data, error } = await supabase
       .from('service_orders')
       .insert([orderToInsert])
@@ -245,6 +374,8 @@ export async function createServiceOrder(order: Omit<ServiceOrder, 'id' | 'creat
     if (error) throw error;
     
     if (data) {
+      upsertCachedRow('service_orders', data as any);
+      void processOfflineSyncQueue();
       return {
         ...data,
         tools: safeParseJson<string[]>(data.tools, []),
@@ -269,6 +400,18 @@ export async function updateServiceOrder(id: number, updates: Partial<ServiceOrd
     if (updates.status !== undefined) updateData.status = updates.status;
     if (updates.end_time !== undefined) updateData.end_time = updates.end_time;
 
+    if (!isBrowserOnline()) {
+      queueUpdate('service_orders', 'service_orders', id, updateData);
+      const cached = getCachedRows<any>('service_orders');
+      const existing = cached.find((o) => o.id === id);
+      if (existing) {
+        const merged = { ...existing, ...updateData };
+        upsertCachedRow('service_orders', merged);
+        return normalizeServiceOrder(merged);
+      }
+      return null;
+    }
+
     const { data, error } = await supabase
       .from('service_orders')
       .update(updateData)
@@ -279,6 +422,8 @@ export async function updateServiceOrder(id: number, updates: Partial<ServiceOrd
     if (error) throw error;
     
     if (data) {
+      upsertCachedRow('service_orders', data as any);
+      void processOfflineSyncQueue();
       return {
         ...data,
         tools: safeParseJson<string[]>(data.tools, []),
@@ -294,6 +439,21 @@ export async function updateServiceOrder(id: number, updates: Partial<ServiceOrd
 
 export async function closeServiceOrder(id: number, endTime: string, finalReport?: string): Promise<boolean> {
   try {
+    if (!isBrowserOnline()) {
+      queueCloseServiceOrder(id, endTime, finalReport);
+      const cached = getCachedRows<any>('service_orders');
+      const existing = cached.find((o) => o.id === id);
+      if (existing) {
+        upsertCachedRow('service_orders', {
+          ...existing,
+          status: 'closed',
+          end_time: endTime,
+          ...(finalReport !== undefined ? { final_report: finalReport } : {}),
+        } as any);
+      }
+      return true;
+    }
+
     const updates: Record<string, unknown> = {
       status: 'closed',
       end_time: endTime
@@ -309,6 +469,7 @@ export async function closeServiceOrder(id: number, endTime: string, finalReport
       .eq('id', id);
 
     if (error) throw error;
+    void processOfflineSyncQueue();
     return true;
   } catch (err) {
     console.error('Erro ao fechar ordem de serviço:', err);
@@ -328,6 +489,15 @@ export async function verifyUserCredentials(
   requiredRole?: 'admin' | 'operator'
 ): Promise<boolean> {
   try {
+    if (!isBrowserOnline()) {
+      const cachedUsers = getCachedRows<any>('users').map(normalizeUser);
+      const match = cachedUsers.find((u: any) => {
+        const roleOk = requiredRole ? u.role === requiredRole : true;
+        return u.username === username && (u as any).password === password && roleOk;
+      });
+      return Boolean(match);
+    }
+
     let query = supabase
       .from('users')
       .select('id')
@@ -349,6 +519,17 @@ export async function verifyUserCredentials(
 
 export async function deleteServiceOrdersByScope(scope: ServiceOrderDeleteScope): Promise<boolean> {
   try {
+    if (!isBrowserOnline()) {
+      queueDeleteServiceOrdersByScope(scope);
+      const current = getCachedRows<any>('service_orders');
+      const filtered =
+        scope === 'all'
+          ? []
+          : current.filter((o) => (scope === 'open' ? o.status !== 'open' : o.status !== 'closed'));
+      setCachedRows('service_orders', filtered);
+      return true;
+    }
+
     let query = supabase.from('service_orders').delete();
 
     if (scope === 'open') {
@@ -363,6 +544,7 @@ export async function deleteServiceOrdersByScope(scope: ServiceOrderDeleteScope)
     const { error } = await query;
 
     if (error) throw error;
+    void processOfflineSyncQueue();
     return true;
   } catch (err) {
     console.error('Erro ao deletar ordens de serviço por escopo:', err);
@@ -374,12 +556,20 @@ export async function deleteServiceOrdersByIds(ids: number[]): Promise<boolean> 
   try {
     if (!ids.length) return true;
 
+    if (!isBrowserOnline()) {
+      queueDeleteManyServiceOrders(ids);
+      const current = getCachedRows<any>('service_orders');
+      setCachedRows('service_orders', current.filter((row) => !ids.includes(row.id)));
+      return true;
+    }
+
     const { error } = await supabase
       .from('service_orders')
       .delete()
       .in('id', ids);
 
     if (error) throw error;
+    void processOfflineSyncQueue();
     return true;
   } catch (err) {
     console.error('Erro ao deletar ordens de serviço por IDs:', err);
@@ -389,57 +579,111 @@ export async function deleteServiceOrdersByIds(ids: number[]): Promise<boolean> 
 
 // ===== CHECKLISTS =====
 export async function getChecklists(): Promise<any[]> {
+  const localUnsynced = await getUnsyncedChecklists();
+
   try {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return localUnsynced;
+    }
+
     const { data, error } = await supabase
       .from('checklists')
       .select('*');
 
     if (error) throw error;
-    return data || [];
+
+    return [...(data || []), ...localUnsynced];
   } catch (err) {
     console.error('Erro ao buscar checklists:', err);
-    return [];
+    return localUnsynced;
   }
 }
 
 export async function createChecklist(checklist: any): Promise<any> {
+  const payload = {
+    machine_id: checklist.machine_id,
+    operator_id: checklist.operator_id,
+    date: checklist.date,
+    status: checklist.status,
+    data: checklist.data || {}
+  };
+
+  const enqueueAndReturn = async () => {
+    const queued = await queueChecklistForSync(payload);
+    return queued;
+  };
+
   try {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return await enqueueAndReturn();
+    }
+
     const { data, error } = await supabase
       .from('checklists')
       .insert([{
-        ...checklist,
-        data: JSON.stringify(checklist.data || {})
+        ...payload,
+        data: JSON.stringify(payload.data || {})
       }])
       .select()
       .single();
 
     if (error) throw error;
+
+    void processChecklistSyncQueue();
     return data;
   } catch (err) {
     console.error('Erro ao criar checklist:', err);
-    return null;
+
+    try {
+      return await enqueueAndReturn();
+    } catch (queueErr) {
+      console.error('Erro ao salvar checklist offline:', queueErr);
+      return null;
+    }
   }
 }
 
 // ===== CHECKLIST TEMPLATES =====
 export async function getChecklistTemplates(): Promise<any[]> {
+  if (!isBrowserOnline()) {
+    return getCachedRows<any>('checklist_templates').map(template => ({
+      ...template,
+      items: safeParseJson(template.items, [])
+    }));
+  }
+
   try {
     const { data, error } = await supabase
       .from('checklist_templates')
       .select('*');
 
     if (error) throw error;
+    setCachedRows('checklist_templates', data || []);
     return (data || []).map(template => ({
       ...template,
       items: safeParseJson(template.items, [])
     }));
   } catch (err) {
     console.error('Erro ao buscar templates:', err);
-    return [];
+    return getCachedRows<any>('checklist_templates').map(template => ({
+      ...template,
+      items: safeParseJson(template.items, [])
+    }));
   }
 }
 
 export async function getChecklistTemplateByModel(model: string): Promise<any> {
+  if (!isBrowserOnline()) {
+    const templates = getCachedRows<any>('checklist_templates');
+    const found = templates.find((template) => template.machine_model === model);
+    return found
+      ? {
+          ...found,
+          items: safeParseJson(found.items, []),
+        }
+      : null;
+  }
+
   try {
     const { data, error } = await supabase
       .from('checklist_templates')
@@ -452,18 +696,52 @@ export async function getChecklistTemplateByModel(model: string): Promise<any> {
       return null;
     }
 
-    return data ? {
+    if (!data) return null;
+
+    const cached = getCachedRows<any>('checklist_templates');
+    const next = cached.filter((template) => template.machine_model !== model);
+    next.unshift(data as any);
+    setCachedRows('checklist_templates', next);
+
+    return {
       ...data,
       items: safeParseJson(data.items, [])
-    } : null;
+    };
   } catch (err) {
     console.error('Erro ao buscar template:', err);
+
+    const templates = getCachedRows<any>('checklist_templates');
+    const found = templates.find((template) => template.machine_model === model);
+    if (found) {
+      return {
+        ...found,
+        items: safeParseJson(found.items, [])
+      };
+    }
+
     return null;
   }
 }
 
 export async function updateChecklistTemplate(machineModel: string, items: any): Promise<any> {
   try {
+    if (!isBrowserOnline()) {
+      queueUpsertChecklistTemplate(machineModel, items);
+      const cached = getCachedRows<any>('checklist_templates');
+      const filtered = cached.filter((template) => template.machine_model !== machineModel);
+      const localTemplate = {
+        id: cached.find((template) => template.machine_model === machineModel)?.id || machineModel,
+        machine_model: machineModel,
+        items: JSON.stringify(items)
+      };
+      filtered.unshift(localTemplate);
+      setCachedRows('checklist_templates', filtered);
+      return {
+        ...localTemplate,
+        items,
+      };
+    }
+
     const { data: existing, error: checkError } = await supabase
       .from('checklist_templates')
       .select('*')
@@ -489,6 +767,14 @@ export async function updateChecklistTemplate(machineModel: string, items: any):
         .single();
       
       if (error) throw error;
+      if (data) {
+        const cached = getCachedRows<any>('checklist_templates');
+        setCachedRows(
+          'checklist_templates',
+          [data, ...cached.filter((template) => template.machine_model !== machineModel)]
+        );
+      }
+      void processOfflineSyncQueue();
       return data;
     } else {
       // Create new template
@@ -499,6 +785,14 @@ export async function updateChecklistTemplate(machineModel: string, items: any):
         .single();
       
       if (error) throw error;
+      if (data) {
+        const cached = getCachedRows<any>('checklist_templates');
+        setCachedRows(
+          'checklist_templates',
+          [data, ...cached.filter((template) => template.machine_model !== machineModel)]
+        );
+      }
+      void processOfflineSyncQueue();
       return data;
     }
   } catch (err) {
@@ -509,12 +803,20 @@ export async function updateChecklistTemplate(machineModel: string, items: any):
 
 export async function deleteMachine(id: number): Promise<boolean> {
   try {
+    if (!isBrowserOnline()) {
+      queueDelete('machines', 'machines', id);
+      removeCachedRow<any>('machines', id);
+      return true;
+    }
+
     const { error } = await supabase
       .from('machines')
       .delete()
       .eq('id', id);
 
     if (error) throw error;
+    removeCachedRow<any>('machines', id);
+    void processOfflineSyncQueue();
     return true;
   } catch (err) {
     console.error('Erro ao deletar máquina:', err);
@@ -524,6 +826,18 @@ export async function deleteMachine(id: number): Promise<boolean> {
 
 export async function updateMachine(id: number, updates: Partial<Machine>): Promise<Machine | null> {
   try {
+    if (!isBrowserOnline()) {
+      queueUpdate('machines', 'machines', id, updates as any);
+      const cached = getCachedRows<any>('machines');
+      const existing = cached.find((m) => m.id === id);
+      if (existing) {
+        const merged = { ...existing, ...updates };
+        upsertCachedRow('machines', merged as any);
+        return normalizeMachine(merged);
+      }
+      return null;
+    }
+
     const { data, error } = await supabase
       .from('machines')
       .update(updates)
@@ -532,7 +846,9 @@ export async function updateMachine(id: number, updates: Partial<Machine>): Prom
       .single();
 
     if (error) throw error;
-    return data;
+    if (data) upsertCachedRow('machines', data as any);
+    void processOfflineSyncQueue();
+    return data ? normalizeMachine(data) : null;
   } catch (err) {
     console.error('Erro ao atualizar máquina:', err);
     return null;
@@ -541,6 +857,11 @@ export async function updateMachine(id: number, updates: Partial<Machine>): Prom
 
 export async function uploadMachineImage(machineId: number, file: File): Promise<string | null> {
   try {
+    if (!isBrowserOnline()) {
+      console.warn('Upload de imagem indisponível offline.');
+      return null;
+    }
+
     const fileName = `machines/${machineId}/${Date.now()}_${file.name}`;
 
     const { data, error } = await supabase.storage
@@ -562,6 +883,11 @@ export async function uploadMachineImage(machineId: number, file: File): Promise
 
 export async function uploadMachineManual(machineId: number, file: File): Promise<string | null> {
   try {
+    if (!isBrowserOnline()) {
+      console.warn('Upload de manual indisponível offline.');
+      return null;
+    }
+
     const fileName = `manuals/${machineId}/${Date.now()}_${file.name}`;
 
     const { data, error } = await supabase.storage

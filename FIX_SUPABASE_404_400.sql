@@ -1,6 +1,3 @@
--- Execute este script no SQL Editor do Supabase para corrigir:
--- 1) 404 em /rest/v1/audit_logs (tabela inexistente)
--- 2) 400 Bucket not found no upload de manuais/imagens
 
 -- =====================================================
 -- AUDIT LOGS TABLE + POLICIES

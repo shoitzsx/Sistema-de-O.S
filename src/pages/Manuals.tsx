@@ -16,6 +16,26 @@ interface Machine {
   quick_specs: string[]; // array de especificações
 }
 
+const DEFAULT_MANUAL_CATEGORIES = ['Caminhões', 'Tratores', 'Máquinas'];
+const MANUAL_CATEGORIES_KEY = 'manuals-categories';
+const MACHINE_CATEGORY_MAP_KEY = 'manuals-machine-category-map';
+
+function normalizeCategoryLabel(value: string) {
+  return value.trim().replace(/\s+/g, ' ');
+}
+
+function readJsonStorage<T>(key: string, fallback: T): T {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    return parsed ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export default function Manuals() {
   const { user } = useAuth();
   const normalizedRole = String(user?.role || '').trim().toLowerCase();
@@ -43,8 +63,102 @@ export default function Manuals() {
     quickSpecs: [] as string[],
     imageFile: null as File | null
   });
+  const [newMachineCategory, setNewMachineCategory] = useState('');
+  const [editMachineCategory, setEditMachineCategory] = useState('');
+  const [categoryDraft, setCategoryDraft] = useState('');
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('all');
+  const [manualCategories, setManualCategories] = useState<string[]>(DEFAULT_MANUAL_CATEGORIES);
+  const [machineCategoryMap, setMachineCategoryMap] = useState<Record<string, string>>({});
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [checklistItems, setChecklistItems] = useState<{category: string, items: string[]}[]>([]);
+
+  const getMachineCategory = (machineId: number) => machineCategoryMap[String(machineId)] || '';
+
+  const upsertMachineCategory = (machineId: number, category: string) => {
+    const normalized = normalizeCategoryLabel(category);
+    setMachineCategoryMap((prev) => {
+      const next = { ...prev };
+      if (!normalized) {
+        delete next[String(machineId)];
+      } else {
+        next[String(machineId)] = normalized;
+      }
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(MACHINE_CATEGORY_MAP_KEY, JSON.stringify(next));
+      }
+      return next;
+    });
+  };
+
+  const removeMachineCategory = (machineId: number) => {
+    setMachineCategoryMap((prev) => {
+      const next = { ...prev };
+      delete next[String(machineId)];
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(MACHINE_CATEGORY_MAP_KEY, JSON.stringify(next));
+      }
+      return next;
+    });
+  };
+
+  const addManualCategory = () => {
+    const normalized = normalizeCategoryLabel(categoryDraft);
+    if (!normalized) {
+      toast.error('Informe um nome de categoria.');
+      return;
+    }
+
+    const alreadyExists = manualCategories.some(
+      (category) => category.toLowerCase() === normalized.toLowerCase()
+    );
+
+    if (alreadyExists) {
+      toast.warning('Essa categoria já existe.');
+      return;
+    }
+
+    const next = [...manualCategories, normalized];
+    setManualCategories(next);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(MANUAL_CATEGORIES_KEY, JSON.stringify(next));
+    }
+    setCategoryDraft('');
+    toast.success('Categoria adicionada com sucesso.');
+  };
+
+  const removeManualCategory = (categoryToRemove: string) => {
+    const nextCategories = manualCategories.filter((category) => category !== categoryToRemove);
+    setManualCategories(nextCategories);
+
+    if (selectedCategoryFilter === categoryToRemove) {
+      setSelectedCategoryFilter('all');
+    }
+    if (newMachineCategory === categoryToRemove) {
+      setNewMachineCategory('');
+    }
+    if (editMachineCategory === categoryToRemove) {
+      setEditMachineCategory('');
+    }
+
+    setMachineCategoryMap((prev) => {
+      const nextMap: Record<string, string> = {};
+      for (const [machineId, category] of Object.entries(prev as Record<string, string>)) {
+        if (category !== categoryToRemove) {
+          nextMap[machineId] = category;
+        }
+      }
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(MACHINE_CATEGORY_MAP_KEY, JSON.stringify(nextMap));
+      }
+      return nextMap;
+    });
+
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(MANUAL_CATEGORIES_KEY, JSON.stringify(nextCategories));
+    }
+
+    toast.info('Categoria removida.');
+  };
 
   const parseQuickSpecs = (quickSpecs: Machine['quick_specs']) => {
     try {
@@ -123,6 +237,26 @@ export default function Manuals() {
 
   useEffect(() => {
     loadMachines();
+
+    const storedCategories = readJsonStorage<string[]>(MANUAL_CATEGORIES_KEY, []);
+    const normalizedStored = Array.isArray(storedCategories)
+      ? storedCategories
+          .map((item) => normalizeCategoryLabel(String(item || '')))
+          .filter(Boolean)
+      : [];
+
+    const mergedCategories = Array.from(new Set([...DEFAULT_MANUAL_CATEGORIES, ...normalizedStored]));
+    setManualCategories(mergedCategories);
+
+    const storedMap = readJsonStorage<Record<string, string>>(MACHINE_CATEGORY_MAP_KEY, {});
+    const normalizedMap: Record<string, string> = {};
+    for (const [machineId, category] of Object.entries(storedMap || {})) {
+      const normalized = normalizeCategoryLabel(String(category || ''));
+      if (normalized) {
+        normalizedMap[machineId] = normalized;
+      }
+    }
+    setMachineCategoryMap(normalizedMap);
   }, []);
 
   const loadMachines = async () => {
@@ -145,6 +279,7 @@ export default function Manuals() {
       description: selectedMachine.description || '',
       quickSpecs: specs.join('\n')
     });
+    setEditMachineCategory(getMachineCategory(selectedMachine.id));
     setIsEditingMachine(false);
     setEditImageFile(null);
     if (editImagePreview) {
@@ -218,9 +353,13 @@ export default function Manuals() {
       const result = await createMachine(machineData as any);
       
       if (result) {
+        if (newMachineCategory) {
+          upsertMachineCategory(result.id, newMachineCategory);
+        }
         loadMachines();
         setIsMachineModalOpen(false);
         setNewMachine({ name: '', model: '', description: '', quickSpecs: [], imageFile: null });
+        setNewMachineCategory('');
         if (imagePreview) {
           URL.revokeObjectURL(imagePreview);
         }
@@ -241,6 +380,7 @@ export default function Manuals() {
       const success = await deleteMachine(id);
       if (success) {
         loadMachines();
+        removeMachineCategory(id);
         setSelectedMachine(null);
         toast.success('Equipamento excluído com sucesso!');
       } else {
@@ -349,6 +489,8 @@ export default function Manuals() {
         return;
       }
 
+      upsertMachineCategory(selectedMachine.id, editMachineCategory);
+
       await loadMachines();
       setSelectedMachine({
         ...selectedMachine,
@@ -422,10 +564,15 @@ export default function Manuals() {
     }
   };
 
-  const filteredMachines = machines.filter(m => 
-    m.name.toLowerCase().includes(search.toLowerCase()) || 
-    m.model.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredMachines = machines.filter((machine) => {
+    const matchesSearch =
+      machine.name.toLowerCase().includes(search.toLowerCase()) ||
+      machine.model.toLowerCase().includes(search.toLowerCase());
+    const machineCategory = getMachineCategory(machine.id);
+    const matchesCategory =
+      selectedCategoryFilter === 'all' || machineCategory === selectedCategoryFilter;
+    return matchesSearch && matchesCategory;
+  });
 
   const withManualCount = machines.filter((machine) => Boolean(machine.manual_url)).length;
   const withoutManualCount = Math.max(0, machines.length - withManualCount);
@@ -478,7 +625,44 @@ export default function Manuals() {
           </div>
         )}
 
-        <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+        {isAdmin && (
+          <div className="bg-white border border-slate-200 rounded-xl p-4 mb-4">
+            <p className="text-sm font-semibold text-slate-800 mb-2">Categorias de Filtro (Admin)</p>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="text"
+                value={categoryDraft}
+                onChange={(e) => setCategoryDraft(e.target.value)}
+                placeholder="Ex: Escadas"
+                className="flex-1 p-2.5 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-200 outline-none"
+              />
+              <button
+                type="button"
+                onClick={addManualCategory}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-lg font-medium"
+              >
+                Adicionar Categoria
+              </button>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {manualCategories.map((category) => (
+                <span key={category} className="inline-flex items-center gap-2 bg-slate-100 text-slate-700 px-3 py-1.5 rounded-full text-sm">
+                  {category}
+                  <button
+                    type="button"
+                    onClick={() => removeManualCategory(category)}
+                    className="text-red-500 hover:text-red-700"
+                    title="Remover categoria"
+                  >
+                    <X size={14} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="flex flex-col gap-3">
           <div className="relative w-full sm:max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
             <input
@@ -490,8 +674,25 @@ export default function Manuals() {
             />
           </div>
 
-          <div className="text-sm text-slate-500">
-            Exibindo {filteredMachines.length} de {machines.length} equipamentos
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div className="w-full sm:w-72">
+              <select
+                value={selectedCategoryFilter}
+                onChange={(e) => setSelectedCategoryFilter(e.target.value)}
+                className="w-full p-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
+              >
+                <option value="all">Todas as categorias</option>
+                {manualCategories.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="text-sm text-slate-500">
+              Exibindo {filteredMachines.length} de {machines.length} equipamentos
+            </div>
           </div>
         </div>
       </div>
@@ -525,6 +726,11 @@ export default function Manuals() {
             <div className="p-4">
               <h3 className="font-bold text-slate-900 truncate">{machine.name}</h3>
               <p className="text-sm text-slate-500 mb-3">{machine.model}</p>
+              {getMachineCategory(machine.id) && (
+                <p className="text-xs font-medium text-indigo-700 bg-indigo-50 inline-flex px-2 py-1 rounded-md mb-3">
+                  {getMachineCategory(machine.id)}
+                </p>
+              )}
               
               <div className="flex items-center justify-between gap-2 text-xs font-medium">
                 {machine.manual_url ? (
@@ -589,6 +795,19 @@ export default function Manuals() {
                   />
                 </div>
                 <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Categoria</label>
+                  <select
+                    value={newMachineCategory}
+                    onChange={(e) => setNewMachineCategory(e.target.value)}
+                    className="w-full p-2.5 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-200 outline-none"
+                  >
+                    <option value="">Sem categoria</option>
+                    {manualCategories.map((category) => (
+                      <option key={category} value={category}>{category}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Foto do Equipamento</label>
                   <input
                     type="file"
@@ -625,6 +844,7 @@ export default function Manuals() {
                     onClick={() => {
                       setIsMachineModalOpen(false);
                       setNewMachine({ name: '', model: '', description: '', quickSpecs: [], imageFile: null });
+                      setNewMachineCategory('');
                       if (imagePreview) {
                         URL.revokeObjectURL(imagePreview);
                       }
@@ -694,6 +914,11 @@ export default function Manuals() {
                       <span className="bg-slate-100 px-3 py-1 rounded-full">
                         {isEditingMachine ? editMachineDraft.model || 'Modelo' : selectedMachine.model}
                       </span>
+                      {!!getMachineCategory(selectedMachine.id) && (
+                        <span className="bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full font-medium">
+                          {getMachineCategory(selectedMachine.id)}
+                        </span>
+                      )}
                       <span>Atualizado em: {new Date().toLocaleDateString()}</span>
                     </div>
                   </div>
@@ -722,6 +947,7 @@ export default function Manuals() {
                                 URL.revokeObjectURL(editImagePreview);
                               }
                               setEditImagePreview(null);
+                              setEditMachineCategory(getMachineCategory(selectedMachine.id));
                               setIsEditingMachine(false);
                             }}
                             className="text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-lg text-sm font-medium"
@@ -771,6 +997,19 @@ export default function Manuals() {
                             onChange={(e) => setEditMachineDraft((prev) => ({ ...prev, model: e.target.value }))}
                             className="w-full p-2.5 rounded-lg border border-slate-200 focus:ring-2 focus:ring-slate-200 outline-none"
                           />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-1">Categoria</label>
+                          <select
+                            value={editMachineCategory}
+                            onChange={(e) => setEditMachineCategory(e.target.value)}
+                            className="w-full p-2.5 rounded-lg border border-slate-200 focus:ring-2 focus:ring-slate-200 outline-none"
+                          >
+                            <option value="">Sem categoria</option>
+                            {manualCategories.map((category) => (
+                              <option key={category} value={category}>{category}</option>
+                            ))}
+                          </select>
                         </div>
                       </div>
 

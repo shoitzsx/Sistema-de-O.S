@@ -68,6 +68,72 @@ BEGIN
   END IF;
 END $$;
 
+-- =====================================================
+-- MACHINES TABLE RLS (manual_url persistence)
+-- =====================================================
+ALTER TABLE public.machines ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'machines'
+      AND policyname = 'Allow public read machines table'
+  ) THEN
+    CREATE POLICY "Allow public read machines table"
+      ON public.machines
+      FOR SELECT
+      USING (true);
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'machines'
+      AND policyname = 'Allow public update machines table'
+  ) THEN
+    CREATE POLICY "Allow public update machines table"
+      ON public.machines
+      FOR UPDATE
+      USING (true)
+      WITH CHECK (true);
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'machines'
+      AND policyname = 'Allow public insert machines table'
+  ) THEN
+    CREATE POLICY "Allow public insert machines table"
+      ON public.machines
+      FOR INSERT
+      WITH CHECK (true);
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'machines'
+      AND policyname = 'Allow public delete machines table'
+  ) THEN
+    CREATE POLICY "Allow public delete machines table"
+      ON public.machines
+      FOR DELETE
+      USING (true);
+  END IF;
+END $$;
+
 DO $$
 BEGIN
   IF NOT EXISTS (

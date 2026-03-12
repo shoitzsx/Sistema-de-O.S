@@ -1,13 +1,13 @@
 import { useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
-import { Wrench, History, BookOpen, CheckSquare, Users, Activity, AlertTriangle, CheckCircle2, Timer, ShieldCheck, Bell } from 'lucide-react';
+import { Wrench, History, BookOpen, CheckSquare, Users, Activity, AlertTriangle, CheckCircle2, Timer, ShieldCheck, Bell, GraduationCap } from 'lucide-react';
 import Layout from '../components/Layout';
 import { motion } from 'motion/react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'react-toastify';
 import { getMachines, getPartsTools, getServiceOrders } from '../lib/supabaseApi';
-import FirstLoginOnboarding from '../components/FirstLoginOnboarding';
 import NotificationSettings from '../components/NotificationSettings';
+import TutorialCenter, { type TutorialItem } from '../components/TutorialCenter';
 import {
   getDefaultNotificationRules,
   getNotificationRules,
@@ -28,7 +28,7 @@ export default function Dashboard() {
   const { user } = useAuth();
   const isAdmin = String(user?.role || '').trim().toLowerCase() === 'admin';
   const [orders, setOrders] = useState<ServiceOrderSummary[]>([]);
-  const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [tutorialOpen, setTutorialOpen] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [notificationRules, setNotificationRules] = useState<NotificationRules>(getDefaultNotificationRules());
 
@@ -60,16 +60,6 @@ export default function Dashboard() {
 
     return () => clearInterval(interval);
   }, []);
-
-  useEffect(() => {
-    if (!user) return;
-
-    const key = `onboarding-dismissed:${user.id}`;
-    const alreadyDismissed = localStorage.getItem(key) === '1';
-    if (!alreadyDismissed) {
-      setOnboardingOpen(true);
-    }
-  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -185,13 +175,6 @@ export default function Dashboard() {
     toast.success('Configurações de notificação atualizadas.');
   };
 
-  const handleCloseOnboarding = () => {
-    if (user) {
-      localStorage.setItem(`onboarding-dismissed:${user.id}`, '1');
-    }
-    setOnboardingOpen(false);
-  };
-
   const modules = [
     {
       id: 1,
@@ -255,9 +238,123 @@ export default function Dashboard() {
     ? modules
     : modules.filter(m => user?.allowed_modules.includes(m.id));
 
+  const tutorialByModuleId: Record<number, TutorialItem> = {
+    1: {
+      id: 'manuals-operator',
+      title: 'Manuais Técnicos',
+      description: 'Localize equipamentos e abra rapidamente o manual correto para trabalho em campo.',
+      bullets: [
+        'Use a busca e os filtros para encontrar o equipamento.',
+        'Abra o detalhe do equipamento e clique em Ler Manual.',
+        'Confirme se o status mostra Manual Disponível antes de sair para operação.'
+      ]
+    },
+    2: {
+      id: 'checklist',
+      title: 'Checklist Mensal',
+      description: 'Registre inspeções periódicas para reduzir falhas recorrentes.',
+      bullets: [
+        'Entre em Checklist Mensal e selecione o equipamento.',
+        'Preencha item por item e marque as pendências encontradas.',
+        'Finalize e valide no histórico de inspeções.'
+      ]
+    },
+    3: {
+      id: 'service-orders',
+      title: 'Ordens de Serviço',
+      description: 'Crie, acompanhe e finalize O.S com rastreabilidade técnica.',
+      bullets: [
+        'Crie nova O.S com descrição objetiva do problema.',
+        'Atualize status durante a execução para manter o time alinhado.',
+        'Finalize com relatório completo para histórico e auditoria.'
+      ]
+    },
+    4: {
+      id: 'history',
+      title: 'Histórico de O.S',
+      description: 'Analise serviços passados com filtros e exportação.',
+      bullets: [
+        'Filtre por período, equipamento e tipo de manutenção.',
+        'Abra o detalhe para revisar o relatório final.',
+        'Exporte quando precisar compartilhar com supervisão.'
+      ]
+    },
+    5: {
+      id: 'users-admin',
+      title: 'Gerenciamento de Usuários',
+      description: 'Crie perfis e controle quais módulos cada usuário pode acessar.',
+      bullets: [
+        'Cadastre usuário com perfil correto (admin ou operador).',
+        'Defina os módulos permitidos de acordo com a função.',
+        'Revise permissões periodicamente para manter segurança operacional.'
+      ]
+    },
+    6: {
+      id: 'checklist-history',
+      title: 'Histórico de Inspeção',
+      description: 'Acompanhe padrões de falhas e evolução das inspeções mensais.',
+      bullets: [
+        'Use os filtros para localizar inspeções por equipamento e período.',
+        'Identifique itens recorrentes com não conformidade.',
+        'Use os dados para planejar manutenção preventiva.'
+      ]
+    },
+    7: {
+      id: 'audit-admin',
+      title: 'Auditoria de Ações',
+      description: 'Rastreie quem alterou dados críticos e quando cada ação ocorreu.',
+      bullets: [
+        'Acesse o módulo de auditoria para revisar eventos recentes.',
+        'Filtre por usuário, entidade e período.',
+        'Use esse histórico para conformidade e investigação de incidentes.'
+      ]
+    }
+  };
+
+  const adminSpecialTutorials: TutorialItem[] = [
+    {
+      id: 'admin-manuals-end-to-end',
+      title: 'Fluxo Admin Completo: Manuais até Auditoria',
+      description: 'Tutorial completo para admins: cadastro de equipamento, upload de manual, revisão e rastreio em auditoria.',
+      bullets: [
+        'No módulo Manuais, crie ou atualize equipamento e categoria.',
+        'Faça upload do manual e confirme o botão Ler Manual disponível.',
+        'Valide no Histórico de O.S se a equipe está usando o documento correto.',
+        'Abra Auditoria de Ações e confirme os registros de criação/edição/upload.',
+        'Use o módulo de Usuários para ajustar permissões conforme necessidade operacional.'
+      ]
+    },
+    {
+      id: 'admin-governance',
+      title: 'Governança Admin e Boas Práticas',
+      description: 'Padronize permissões, qualidade de dados e controles de operação.',
+      bullets: [
+        'Mantenha permissões mínimas necessárias para cada função.',
+        'Padronize nomenclatura de máquinas e componentes.',
+        'Revise periodicamente alertas, auditoria e filas de sincronização.'
+      ]
+    }
+  ];
+
+  const availableTutorials = useMemo(() => {
+    const moduleTutorials = allowedModules
+      .map((module) => tutorialByModuleId[module.id])
+      .filter((item): item is TutorialItem => Boolean(item));
+
+    if (!isAdmin) {
+      return moduleTutorials;
+    }
+
+    return [...adminSpecialTutorials, ...moduleTutorials];
+  }, [allowedModules, isAdmin]);
+
   return (
     <Layout>
-      <FirstLoginOnboarding open={onboardingOpen} onClose={handleCloseOnboarding} />
+      <TutorialCenter
+        open={tutorialOpen}
+        onClose={() => setTutorialOpen(false)}
+        tutorials={availableTutorials}
+      />
       <NotificationSettings
         open={notificationOpen}
         initialRules={notificationRules}
@@ -271,12 +368,20 @@ export default function Dashboard() {
             <h2 className="text-2xl font-bold text-slate-900">Painel de Controle</h2>
             <p className="text-slate-500">Selecione um módulo para começar</p>
           </div>
-          <button
-            onClick={() => setNotificationOpen(true)}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-amber-100 text-amber-800 hover:bg-amber-200 font-medium"
-          >
-            <Bell size={16} /> Configurar notificações
-          </button>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button
+              onClick={() => setTutorialOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-blue-100 text-blue-800 hover:bg-blue-200 font-medium"
+            >
+              <GraduationCap size={16} /> Tutorial
+            </button>
+            <button
+              onClick={() => setNotificationOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-amber-100 text-amber-800 hover:bg-amber-200 font-medium"
+            >
+              <Bell size={16} /> Configurar notificações
+            </button>
+          </div>
         </div>
       </div>
 

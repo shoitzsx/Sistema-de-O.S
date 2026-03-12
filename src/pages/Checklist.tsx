@@ -4,9 +4,9 @@ import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
-import { CheckCircle, XCircle, MinusCircle, ChevronRight, Save, Calendar, ChevronDown, ChevronUp, AlertCircle, Plus, Trash2, Settings } from 'lucide-react';
+import { CheckCircle, XCircle, MinusCircle, ChevronRight, Save, Calendar, ChevronDown, ChevronUp, AlertCircle, Plus, Trash2, Settings, Timer } from 'lucide-react';
 import clsx from 'clsx';
-import { getMachines, getChecklistTemplateByModel, createChecklist } from '../lib/supabaseApi';
+import { getMachines, getChecklistTemplateByModel, createChecklist, getChecklists } from '../lib/supabaseApi';
 import { getOfflineChecklistSyncSummary } from '../lib/offlineChecklist';
 import { supabase } from '../lib/supabase';
 
@@ -28,6 +28,12 @@ interface Machine {
 interface TemplateCategory {
   category: string;
   items: string[];
+}
+
+interface ChecklistSummary {
+  status: 'pending' | 'completed' | string;
+  date: string;
+  operator_id: number;
 }
 
 function toSafeDate(value: unknown): Date {
@@ -64,9 +70,34 @@ export default function Checklist() {
   const [nokItemsToConfirm, setNokItemsToConfirm] = useState<string[]>([]);
   const [showNokConfirmDialog, setShowNokConfirmDialog] = useState(false);
   const [syncSummary, setSyncSummary] = useState({ pending: 0, error: 0, online: true });
+  const [checklistSummary, setChecklistSummary] = useState<ChecklistSummary[]>([]);
 
   useEffect(() => {
     loadMachines();
+  }, []);
+
+  useEffect(() => {
+    const loadChecklistSummary = async () => {
+      try {
+        const data = await getChecklists();
+        setChecklistSummary(
+          (data || []).map((item: any) => ({
+            status: String(item.status || 'pending'),
+            date: String(item.date || item.created_at || new Date().toISOString()),
+            operator_id: Number(item.operator_id || 0),
+          }))
+        );
+      } catch (err) {
+        console.error('Erro ao carregar resumo do checklist:', err);
+      }
+    };
+
+    void loadChecklistSummary();
+    const interval = setInterval(() => {
+      void loadChecklistSummary();
+    }, 90000);
+
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -349,6 +380,31 @@ export default function Checklist() {
 
   const progress = calculateProgress();
 
+  const checklistKpis = React.useMemo(() => {
+    const visible = isAdmin
+      ? checklistSummary
+      : checklistSummary.filter((entry) => entry.operator_id === user?.id);
+
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const pending = visible.filter((entry) => entry.status !== 'completed').length;
+    const completed = visible.filter((entry) => entry.status === 'completed').length;
+    const completedToday = visible.filter((entry) => {
+      if (entry.status !== 'completed') return false;
+      return toSafeDate(entry.date).getTime() >= startOfToday.getTime();
+    }).length;
+
+    const completionRate = visible.length > 0 ? (completed / visible.length) * 100 : 0;
+
+    return {
+      pending,
+      completed,
+      completedToday,
+      completionRate,
+    };
+  }, [checklistSummary, isAdmin, user?.id]);
+
   // Modal de confirmação para NOK sem descrição
   const NokConfirmDialog = () => {
     if (!showNokConfirmDialog) return null;
@@ -437,6 +493,40 @@ export default function Checklist() {
                     <Settings size={18} /> Cadastrar Inspecao
                   </button>
                 )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+              <div className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-medium text-slate-600">Checklists pendentes</p>
+                  <AlertCircle size={18} className="text-amber-600" />
+                </div>
+                <p className="text-3xl font-bold text-slate-900">{checklistKpis.pending}</p>
+              </div>
+
+              <div className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-medium text-slate-600">Checklists concluídos</p>
+                  <CheckCircle size={18} className="text-emerald-600" />
+                </div>
+                <p className="text-3xl font-bold text-slate-900">{checklistKpis.completed}</p>
+              </div>
+
+              <div className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-medium text-slate-600">Concluídos hoje</p>
+                  <Calendar size={18} className="text-blue-600" />
+                </div>
+                <p className="text-3xl font-bold text-slate-900">{checklistKpis.completedToday}</p>
+              </div>
+
+              <div className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-medium text-slate-600">Taxa de conclusão</p>
+                  <Timer size={18} className="text-violet-600" />
+                </div>
+                <p className="text-3xl font-bold text-slate-900">{checklistKpis.completionRate.toFixed(0)}%</p>
               </div>
             </div>
 

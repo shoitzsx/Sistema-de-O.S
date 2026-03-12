@@ -65,7 +65,7 @@ export default function TutorialCenter({ open, onClose, tutorials }: TutorialCen
             initial={{ opacity: 0, y: 12, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.98 }}
-            className="w-full max-w-6xl bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden"
+            className="w-full max-w-6xl max-h-[90vh] bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col"
           >
             <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
               <div>
@@ -81,8 +81,8 @@ export default function TutorialCenter({ open, onClose, tutorials }: TutorialCen
               </button>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-[300px,1fr] min-h-[540px] max-h-[80vh]">
-              <aside className="border-r border-slate-100 bg-slate-50 overflow-y-auto">
+            <div className="grid grid-cols-1 lg:grid-cols-[300px,1fr] flex-1 min-h-0">
+              <aside className="border-r border-slate-100 bg-slate-50 overflow-y-auto min-h-0">
                 <div className="px-4 py-3 border-b border-slate-200">
                   <p className="text-sm font-semibold text-slate-800">Tutoriais disponíveis</p>
                   <p className="text-xs text-slate-500">Mostrando apenas os módulos permitidos para seu perfil.</p>
@@ -116,7 +116,7 @@ export default function TutorialCenter({ open, onClose, tutorials }: TutorialCen
                 </div>
               </aside>
 
-              <section className="p-6 overflow-y-auto">
+              <section className="p-6 overflow-y-auto min-h-0">
                 {activeTutorial ? (
                   <>
                     <div className="flex items-start gap-3 mb-6">

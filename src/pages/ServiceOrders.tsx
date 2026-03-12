@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
-import { Plus, Clock, CheckCircle, AlertTriangle, Play, Square, X, Package } from 'lucide-react';
+import { Plus, Clock, CheckCircle, AlertTriangle, Play, Square, X, Package, Search, BookmarkPlus } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'react-toastify';
 import { 
@@ -17,6 +17,7 @@ import {
   createPartTool,
   deletePartTool
 } from '../lib/supabaseApi';
+import { recordAuditAction } from '../lib/audit';
 
 interface PartTool {
   id: number;
@@ -45,6 +46,13 @@ interface ServiceOrder {
 interface Machine {
   id: number;
   name: string;
+}
+
+interface SavedServiceOrdersFilter {
+  id: string;
+  name: string;
+  query: string;
+  status: 'all' | 'open' | 'closed';
 }
 
 export default function ServiceOrders() {
@@ -80,6 +88,10 @@ export default function ServiceOrders() {
   const [selectedOrderIds, setSelectedOrderIds] = useState<number[]>([]);
   const [deleteReason, setDeleteReason] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed'>('all');
+  const [savedFilters, setSavedFilters] = useState<SavedServiceOrdersFilter[]>([]);
+  const [savedFilterName, setSavedFilterName] = useState('');
   const [newOrder, setNewOrder] = useState({
   machine_id: '',
   maintenance_type: 'corretiva' as 'preventiva' | 'corretiva',
@@ -91,10 +103,29 @@ export default function ServiceOrders() {
   toolsInput: ''
 });
   useEffect(() => {
-    fetchOrders();
-    fetchMachines();
-    fetchPartsTools();
-  }, []);
+    if (!user) return;
+
+    void fetchOrders();
+    void fetchMachines();
+    void fetchPartsTools();
+  }, [user?.id, isAdmin]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const storageKey = `service-orders-filters:${user.id}`;
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) return;
+
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setSavedFilters(parsed as SavedServiceOrdersFilter[]);
+      }
+    } catch {
+      setSavedFilters([]);
+    }
+  }, [user]);
 
   // Update timer every second
   useEffect(() => {
@@ -127,7 +158,10 @@ export default function ServiceOrders() {
   const fetchOrders = async () => {
     try {
       const data = await getServiceOrders();
-      setOrders(data);
+      const scopedOrders = isAdmin
+        ? data
+        : data.filter((order) => order.operator_id === user?.id);
+      setOrders(scopedOrders);
     } catch (err) {
       console.error('Erro ao buscar ordens:', err);
     }
@@ -180,21 +214,9 @@ export default function ServiceOrders() {
       return;
     }
 
-    // Validações de campos obrigatórios
-    if (!newOrder.machine_id || String(newOrder.machine_id).trim() === '') {
-      toast.error('❌ Campo obrigatório: Máquina');
-      return;
-    }
-    if (!newOrder.technician_name || newOrder.technician_name.trim() === '') {
-      toast.error('❌ Campo obrigatório: Responsável');
-      return;
-    }
-    if (!newOrder.component || newOrder.component.trim() === '') {
-      toast.error('❌ Campo obrigatório: Componente com Falha');
-      return;
-    }
-    if (!newOrder.description || newOrder.description.trim() === '') {
-      toast.error('❌ Campo obrigatório: Descrição do Problema');
+    const validationError = validateOrderForm();
+    if (validationError) {
+      toast.error(`❌ ${validationError}`);
       return;
     }
 
@@ -233,6 +255,21 @@ export default function ServiceOrders() {
       const result = await createServiceOrder(orderData);
 
       if (result) {
+        await recordAuditAction({
+          action: 'service_order_created',
+          entityId: result.id,
+          user: {
+            id: user.id,
+            name: user.name,
+            role: user.role,
+          },
+          details: {
+            machine_name: machine.name,
+            component: newOrder.component,
+            maintenance_type: newOrder.maintenance_type,
+          },
+        });
+
         toast.success('✅ Ordem de serviço criada com sucesso!');
         await fetchOrders();
         setIsModalOpen(false);
@@ -260,9 +297,24 @@ export default function ServiceOrders() {
 
   const handleFinishOrder = async (id: number) => {
 
+    if (!user) return;
+
     try {
       const success = await closeServiceOrder(id, new Date().toISOString());
       if (success) {
+        await recordAuditAction({
+          action: 'service_order_closed',
+          entityId: id,
+          user: {
+            id: user.id,
+            name: user.name,
+            role: user.role,
+          },
+          details: {
+            closed_via: 'quick-action'
+          },
+        });
+
         await fetchOrders();
         toast.success('Ordem de serviço finalizada com sucesso!');
       } else {
@@ -320,6 +372,20 @@ export default function ServiceOrders() {
           : await deleteServiceOrdersByIds(selectedOrderIds);
 
       if (success) {
+        await recordAuditAction({
+          action: 'service_order_deleted',
+          user: {
+            id: user.id,
+            name: user.name,
+            role: user.role,
+          },
+          details: {
+            mode: deleteMode,
+            selected_ids: deleteMode === 'specific' ? selectedOrderIds : [],
+            reason: deleteReason,
+          },
+        });
+
         toast.success('✅ Ordens de serviço excluídas com sucesso.');
         await fetchOrders();
         setIsDeleteModalOpen(false);
@@ -358,6 +424,22 @@ export default function ServiceOrders() {
     return Number.isFinite(parsed) ? parsed : Date.now();
   };
 
+  const validateOrderForm = () => {
+    if (!newOrder.machine_id || String(newOrder.machine_id).trim() === '') {
+      return 'Campo obrigatório: Máquina';
+    }
+    if (!newOrder.technician_name || newOrder.technician_name.trim().length < 3) {
+      return 'Informe um responsável com pelo menos 3 caracteres';
+    }
+    if (!newOrder.component || newOrder.component.trim().length < 2) {
+      return 'Informe o componente com pelo menos 2 caracteres';
+    }
+    if (!newOrder.description || newOrder.description.trim().length < 8) {
+      return 'A descrição precisa ter no mínimo 8 caracteres';
+    }
+    return null;
+  };
+
   const calculateDuration = (orderId: number, start: string, end: string | null) => {
     try {
       const startTime = parseTimestampMs(start);
@@ -389,6 +471,58 @@ export default function ServiceOrders() {
     } catch (err) {
       return '00:00:00';
     }
+  };
+
+  const filteredOrders = orders.filter((order) => {
+    if (!isAdmin && order.operator_id !== user?.id) {
+      return false;
+    }
+
+    if (statusFilter !== 'all' && order.status !== statusFilter) {
+      return false;
+    }
+
+    if (!searchTerm.trim()) {
+      return true;
+    }
+
+    const q = searchTerm.toLowerCase();
+    return (
+      order.machine_name.toLowerCase().includes(q) ||
+      order.component.toLowerCase().includes(q) ||
+      order.technician_name.toLowerCase().includes(q) ||
+      String(order.id).includes(q)
+    );
+  });
+
+  const saveCurrentFilter = () => {
+    if (!user) return;
+
+    const name = savedFilterName.trim();
+    if (!name) {
+      toast.error('Dê um nome para o filtro favorito.');
+      return;
+    }
+
+    const next: SavedServiceOrdersFilter[] = [
+      {
+        id: `f_${Date.now()}`,
+        name,
+        query: searchTerm,
+        status: statusFilter,
+      },
+      ...savedFilters,
+    ].slice(0, 10);
+
+    setSavedFilters(next);
+    setSavedFilterName('');
+    localStorage.setItem(`service-orders-filters:${user.id}`, JSON.stringify(next));
+    toast.success('Filtro salvo com sucesso.');
+  };
+
+  const applySavedFilter = (filter: SavedServiceOrdersFilter) => {
+    setSearchTerm(filter.query);
+    setStatusFilter(filter.status);
   };
 
   return (
@@ -424,8 +558,86 @@ export default function ServiceOrders() {
         </div>
       </div>
 
+      <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100 grid grid-cols-1 md:grid-cols-4 gap-3 mb-5">
+        <div className="md:col-span-2">
+          <label className="block text-sm font-medium text-slate-700 mb-1">Busca global de O.S</label>
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Buscar por máquina, componente, responsável ou ID"
+              className="w-full pl-9 p-2.5 rounded-lg border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as 'all' | 'open' | 'closed')}
+            className="w-full p-2.5 rounded-lg border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none bg-white"
+          >
+            <option value="all">Todos</option>
+            <option value="open">Em andamento</option>
+            <option value="closed">Finalizadas</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Filtros salvos</label>
+          <select
+            defaultValue=""
+            onChange={(e) => {
+              const found = savedFilters.find((filter) => filter.id === e.target.value);
+              if (found) {
+                applySavedFilter(found);
+              }
+            }}
+            className="w-full p-2.5 rounded-lg border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none bg-white"
+          >
+            <option value="">Selecionar...</option>
+            {savedFilters.map((filter) => (
+              <option key={filter.id} value={filter.id}>{filter.name}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="md:col-span-3">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={savedFilterName}
+              onChange={(e) => setSavedFilterName(e.target.value)}
+              placeholder="Nome do filtro favorito"
+              className="flex-1 p-2.5 rounded-lg border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none"
+            />
+            <button
+              onClick={saveCurrentFilter}
+              className="px-4 rounded-lg bg-slate-900 hover:bg-slate-800 text-white flex items-center gap-1.5"
+            >
+              <BookmarkPlus size={16} /> Salvar
+            </button>
+          </div>
+        </div>
+
+        <div className="flex items-end">
+          <button
+            onClick={() => {
+              setSearchTerm('');
+              setStatusFilter('all');
+            }}
+            className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-2.5 rounded-lg transition-colors"
+          >
+            Limpar
+          </button>
+        </div>
+      </div>
+
       <div className="grid gap-4">
-        {orders.map((order) => (
+        {filteredOrders.map((order) => (
           <motion.div
             key={order.id}
             initial={{ opacity: 0, y: 10 }}
@@ -503,7 +715,7 @@ export default function ServiceOrders() {
           </motion.div>
         ))}
 
-        {orders.length === 0 && (
+        {filteredOrders.length === 0 && (
           <div className="text-center py-12 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
             <div className="bg-slate-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
               <AlertTriangle className="text-slate-400" size={32} />
@@ -931,6 +1143,7 @@ export default function ServiceOrders() {
                 <button
                   onClick={async () => {
                     if (!finishingOrderId) return;
+                    if (!user) return;
                     try {
                       const result = await closeServiceOrder(
                         finishingOrderId,
@@ -938,6 +1151,19 @@ export default function ServiceOrders() {
                         finalReport || undefined
                       );
                       if (result) {
+                        await recordAuditAction({
+                          action: 'service_order_closed',
+                          entityId: finishingOrderId,
+                          user: {
+                            id: user.id,
+                            name: user.name,
+                            role: user.role,
+                          },
+                          details: {
+                            has_final_report: Boolean(finalReport?.trim()),
+                          },
+                        });
+
                         toast.success('✅ Ordem de serviço finalizada com sucesso!');
                         await fetchOrders();
                         setFinishModalOpen(false);
@@ -1000,6 +1226,7 @@ export default function ServiceOrders() {
                 <button onClick={() => setEditReportModalOpen(false)} className="flex-1 bg-slate-100 hover:bg-slate-200 py-3 rounded-lg">Cancelar</button>
                 <button onClick={async () => {
                   if (!editingOrder) return;
+                  if (!user) return;
                   
                   // Validar campo obrigatório
                   if (!editComponent.trim()) {
@@ -1015,6 +1242,19 @@ export default function ServiceOrders() {
                     });
                     
                     if (result) {
+                      await recordAuditAction({
+                        action: 'service_order_updated',
+                        entityId: editingOrder.id,
+                        user: {
+                          id: user.id,
+                          name: user.name,
+                          role: user.role,
+                        },
+                        details: {
+                          fields: ['final_report', 'tools', 'component'],
+                        },
+                      });
+
                       toast.success('Relatório atualizado com sucesso!');
                       await fetchOrders();
                       setEditReportModalOpen(false);

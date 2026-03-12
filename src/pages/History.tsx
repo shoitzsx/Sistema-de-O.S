@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
-import { Clock, AlertTriangle, CheckCircle, FileText, Download } from 'lucide-react';
+import { Clock, AlertTriangle, CheckCircle, FileText, Download, BookmarkPlus, FileDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'react-toastify';
 import {
@@ -10,6 +10,17 @@ import {
   deleteServiceOrdersByIds,
   verifyUserCredentials,
 } from '../lib/supabaseApi';
+import { recordAuditAction } from '../lib/audit';
+
+interface SavedHistoryFilter {
+  id: string;
+  name: string;
+  searchTerm: string;
+  filterStatus: 'all' | 'open' | 'closed';
+  filterType: 'all' | 'preventiva' | 'corretiva';
+  dateFrom: string;
+  dateTo: string;
+}
 
 interface ServiceOrder {
   id: number;
@@ -36,11 +47,16 @@ export default function History() {
     normalizedRole === 'admin' ||
     normalizedRole === 'administrador' ||
     normalizedUsername === 'admin';
+  const PAGE_SIZE = 20;
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
-  const [filteredOrders, setFilteredOrders] = useState<ServiceOrder[]>([]);
   const [filterStatus, setFilterStatus] = useState<'all' | 'open' | 'closed'>('closed');
   const [filterType, setFilterType] = useState<'all' | 'preventiva' | 'corretiva'>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [savedFilters, setSavedFilters] = useState<SavedHistoryFilter[]>([]);
+  const [savedFilterName, setSavedFilterName] = useState('');
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [isDeletingAllOrders, setIsDeletingAllOrders] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
@@ -50,23 +66,42 @@ export default function History() {
   const [adminPassword, setAdminPassword] = useState('');
 
   useEffect(() => {
-    fetchOrders();
-  }, []);
+    if (!user) return;
+    void fetchOrders();
+  }, [user?.id, isAdmin]);
 
   useEffect(() => {
-    filterOrders();
-  }, [orders, filterStatus, filterType, searchTerm, user]);
+    setVisibleCount(PAGE_SIZE);
+  }, [filterStatus, filterType, searchTerm, dateFrom, dateTo, user]);
+
+  useEffect(() => {
+    if (!user) return;
+    const raw = localStorage.getItem(`history-filters:${user.id}`);
+    if (!raw) return;
+
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setSavedFilters(parsed as SavedHistoryFilter[]);
+      }
+    } catch {
+      setSavedFilters([]);
+    }
+  }, [user]);
 
   const fetchOrders = async () => {
     try {
       const data = await getServiceOrders();
-      setOrders(data);
+      const scopedOrders = isAdmin
+        ? data
+        : data.filter((order) => order.operator_id === user?.id);
+      setOrders(scopedOrders);
     } catch (err) {
       console.error('Erro ao buscar ordens:', err);
     }
   };
 
-  const filterOrders = () => {
+  const filteredOrders = useMemo(() => {
     let filtered = [...orders];
 
     // Filter por role: admin vê tudo, operador vê só seu
@@ -94,10 +129,59 @@ export default function History() {
       );
     }
 
+    if (dateFrom) {
+      const start = new Date(`${dateFrom}T00:00:00`).getTime();
+      filtered = filtered.filter((order) => new Date(order.start_time).getTime() >= start);
+    }
+
+    if (dateTo) {
+      const end = new Date(`${dateTo}T23:59:59`).getTime();
+      filtered = filtered.filter((order) => new Date(order.start_time).getTime() <= end);
+    }
+
     // Ordenar por data mais recente primeiro
     filtered.sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
 
-    setFilteredOrders(filtered);
+    return filtered;
+  }, [orders, filterStatus, filterType, searchTerm, dateFrom, dateTo, user, isAdmin]);
+
+  const visibleOrders = useMemo(() => {
+    return filteredOrders.slice(0, visibleCount);
+  }, [filteredOrders, visibleCount]);
+
+  const saveCurrentFilter = () => {
+    if (!user) return;
+    const name = savedFilterName.trim();
+    if (!name) {
+      toast.error('Dê um nome para salvar o filtro.');
+      return;
+    }
+
+    const next: SavedHistoryFilter[] = [
+      {
+        id: `hf_${Date.now()}`,
+        name,
+        searchTerm,
+        filterStatus,
+        filterType,
+        dateFrom,
+        dateTo,
+      },
+      ...savedFilters,
+    ].slice(0, 10);
+
+    setSavedFilters(next);
+    setSavedFilterName('');
+    localStorage.setItem(`history-filters:${user.id}`, JSON.stringify(next));
+    toast.success('Filtro salvo com sucesso.');
+  };
+
+  const applySavedFilter = (filter: SavedHistoryFilter) => {
+    setSearchTerm(filter.searchTerm);
+    setFilterStatus(filter.filterStatus);
+    setFilterType(filter.filterType);
+    setDateFrom(filter.dateFrom);
+    setDateTo(filter.dateTo);
   };
 
   const calculateDuration = (start: string, end: string | null) => {
@@ -159,6 +243,67 @@ export default function History() {
     document.body.removeChild(link);
   };
 
+  const exportToPDF = () => {
+    const rowsHtml = filteredOrders.map((order) => `
+      <tr>
+        <td>#${order.id.toString().padStart(4, '0')}</td>
+        <td>${order.machine_name}</td>
+        <td>${order.technician_name}</td>
+        <td>${order.maintenance_type === 'preventiva' ? 'Preventiva' : 'Corretiva'}</td>
+        <td>${order.status === 'closed' ? 'Finalizada' : 'Em andamento'}</td>
+        <td>${formatDate(order.start_time)}</td>
+        <td>${order.end_time ? formatDate(order.end_time) : '-'}</td>
+      </tr>
+    `).join('');
+
+    const html = `
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Relatorio de OS</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 24px; color: #0f172a; }
+            h1 { margin: 0 0 8px; }
+            p { margin: 0 0 20px; color: #475569; }
+            table { width: 100%; border-collapse: collapse; font-size: 12px; }
+            th, td { border: 1px solid #cbd5e1; padding: 8px; text-align: left; }
+            th { background: #f1f5f9; }
+          </style>
+        </head>
+        <body>
+          <h1>Relatório de Ordens de Serviço</h1>
+          <p>Gerado em ${new Date().toLocaleString('pt-BR')} | Registros: ${filteredOrders.length}</p>
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Máquina</th>
+                <th>Responsável</th>
+                <th>Tipo</th>
+                <th>Status</th>
+                <th>Início</th>
+                <th>Fim</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </body>
+      </html>
+    `;
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      toast.error('Não foi possível abrir a visualização do PDF.');
+      return;
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  };
+
   const openDeleteModal = () => {
     setDeleteMode('all');
     setSelectedOrderIds([]);
@@ -205,6 +350,20 @@ export default function History() {
           : await deleteServiceOrdersByIds(selectedOrderIds);
 
       if (success) {
+        await recordAuditAction({
+          action: 'service_order_deleted',
+          user: {
+            id: user.id,
+            name: user.name,
+            role: user.role,
+          },
+          details: {
+            mode: deleteMode,
+            selected_ids: deleteMode === 'specific' ? selectedOrderIds : [],
+            reason: deleteReason,
+          },
+        });
+
         toast.success('✅ Ordens de serviço excluídas com sucesso.');
         await fetchOrders();
         setIsDeleteModalOpen(false);
@@ -240,6 +399,12 @@ export default function History() {
               </button>
             )}
             <button
+              onClick={exportToPDF}
+              className="bg-slate-700 hover:bg-slate-800 text-white font-medium py-2.5 px-4 rounded-xl shadow-lg shadow-slate-700/20 flex items-center justify-center gap-2 transition-all w-full sm:w-auto"
+            >
+              <FileDown size={18} /> Exportar PDF
+            </button>
+            <button
               onClick={exportToCSV}
               className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 px-4 rounded-xl shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 transition-all w-full sm:w-auto"
             >
@@ -249,7 +414,7 @@ export default function History() {
         </div>
 
         {/* Filtros */}
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100 grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100 grid grid-cols-1 md:grid-cols-5 gap-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">Buscar</label>
             <input
@@ -284,12 +449,68 @@ export default function History() {
               <option value="preventiva">Preventiva</option>
             </select>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Data inicial</label>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="w-full p-2.5 rounded-lg border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Data final</label>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="w-full p-2.5 rounded-lg border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none"
+            />
+          </div>
+          <div className="md:col-span-3">
+            <label className="block text-sm font-medium text-slate-700 mb-2">Nome do filtro salvo</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={savedFilterName}
+                onChange={(e) => setSavedFilterName(e.target.value)}
+                placeholder="Ex: Finalizadas da semana"
+                className="flex-1 p-2.5 rounded-lg border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none"
+              />
+              <button
+                onClick={saveCurrentFilter}
+                className="px-4 rounded-lg bg-slate-900 hover:bg-slate-800 text-white flex items-center gap-1.5"
+              >
+                <BookmarkPlus size={16} /> Salvar
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Filtros salvos</label>
+            <select
+              defaultValue=""
+              onChange={(e) => {
+                const found = savedFilters.find((item) => item.id === e.target.value);
+                if (found) {
+                  applySavedFilter(found);
+                }
+              }}
+              className="w-full p-2.5 rounded-lg border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none bg-white"
+            >
+              <option value="">Selecionar...</option>
+              {savedFilters.map((item) => (
+                <option key={item.id} value={item.id}>{item.name}</option>
+              ))}
+            </select>
+          </div>
           <div className="flex items-end">
             <button
               onClick={() => {
                 setSearchTerm('');
                 setFilterStatus('closed');
                 setFilterType('all');
+                setDateFrom('');
+                setDateTo('');
               }}
               className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-2.5 rounded-lg transition-colors"
             >
@@ -452,7 +673,7 @@ export default function History() {
             <p className="text-slate-500">Tente ajustar seus filtros de busca.</p>
           </div>
         ) : (
-          filteredOrders.map((order) => (
+          visibleOrders.map((order) => (
             <motion.div
               key={order.id}
               initial={{ opacity: 0, y: 10 }}
@@ -549,6 +770,17 @@ export default function History() {
           ))
         )}
       </div>
+
+      {filteredOrders.length > visibleCount && (
+        <div className="mt-5 flex justify-center">
+          <button
+            onClick={() => setVisibleCount((prev) => prev + PAGE_SIZE)}
+            className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-5 py-2.5 rounded-lg"
+          >
+            Carregar mais ({filteredOrders.length - visibleCount} restantes)
+          </button>
+        </div>
+      )}
 
       {/* Resumo */}
       {filteredOrders.length > 0 && (

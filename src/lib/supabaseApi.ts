@@ -52,6 +52,50 @@ function normalizeServiceOrder(order: any): ServiceOrder {
   };
 }
 
+const STORAGE_BUCKET = (import.meta.env.VITE_SUPABASE_STORAGE_BUCKET as string | undefined) || 'machines';
+const STORAGE_BUCKET_CANDIDATES = Array.from(new Set([STORAGE_BUCKET, 'machines', 'manuals']));
+
+async function uploadWithBucketFallback(
+  fileName: string,
+  file: File,
+  options?: { contentType?: string }
+): Promise<{ publicUrl: string; bucket: string } | null> {
+  let lastError: any = null;
+
+  for (const bucket of STORAGE_BUCKET_CANDIDATES) {
+    const { error } = await supabase.storage
+      .from(bucket)
+      .upload(fileName, file, {
+        upsert: true,
+        ...(options?.contentType ? { contentType: options.contentType } : {}),
+      });
+
+    if (error) {
+      lastError = error;
+      const message = String(error.message || '').toLowerCase();
+      if (message.includes('bucket not found')) {
+        continue;
+      }
+      throw error;
+    }
+
+    const { data: publicUrl } = supabase.storage
+      .from(bucket)
+      .getPublicUrl(fileName);
+
+    return {
+      publicUrl: publicUrl?.publicUrl || '',
+      bucket,
+    };
+  }
+
+  if (lastError) {
+    console.error('Falha ao enviar arquivo para todos os buckets candidatos:', STORAGE_BUCKET_CANDIDATES, lastError);
+  }
+
+  return null;
+}
+
 // ===== USERS =====
 export async function loginUser(username: string, password: string): Promise<User | null> {
   try {
@@ -66,10 +110,13 @@ export async function loginUser(username: string, password: string): Promise<Use
       .select('*')
       .eq('username', username)
       .eq('password', password)
-      .single();
+      .maybeSingle();
 
     if (error) {
-      console.error('Erro ao fazer login:', error);
+      // Credentials mismatch should not spam console as transport error.
+      if (error.code !== 'PGRST116') {
+        console.error('Erro ao fazer login:', error);
+      }
       return null;
     }
 
@@ -863,18 +910,10 @@ export async function uploadMachineImage(machineId: number, file: File): Promise
     }
 
     const fileName = `machines/${machineId}/${Date.now()}_${file.name}`;
-
-    const { data, error } = await supabase.storage
-      .from('machines')
-      .upload(fileName, file, { upsert: true });
-
-    if (error) throw error;
-
-    const { data: publicUrl } = supabase.storage
-      .from('machines')
-      .getPublicUrl(fileName);
-
-    return publicUrl?.publicUrl || null;
+    const uploaded = await uploadWithBucketFallback(fileName, file, {
+      contentType: file.type || undefined,
+    });
+    return uploaded?.publicUrl || null;
   } catch (err) {
     console.error('Erro ao fazer upload da imagem:', err);
     return null;
@@ -888,19 +927,12 @@ export async function uploadMachineManual(machineId: number, file: File): Promis
       return null;
     }
 
-    const fileName = `manuals/${machineId}/${Date.now()}_${file.name}`;
-
-    const { data, error } = await supabase.storage
-      .from('machines')
-      .upload(fileName, file, { upsert: true });
-
-    if (error) throw error;
-
-    const { data: publicUrl } = supabase.storage
-      .from('machines')
-      .getPublicUrl(fileName);
-
-    return publicUrl?.publicUrl || null;
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const fileName = `manuals/${machineId}/${Date.now()}_${safeName}`;
+    const uploaded = await uploadWithBucketFallback(fileName, file, {
+      contentType: file.type || undefined,
+    });
+    return uploaded?.publicUrl || null;
   } catch (err) {
     console.error('Erro ao fazer upload do manual:', err);
     return null;

@@ -35,12 +35,9 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^8.2.0",
-    "@rollup/rollup-win32-x64-msvc": "^4.59.0",
-    "@tailwindcss/oxide-win32-x64-msvc": "^4.2.1",
     "@types/node": "^22.14.0",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.11",
-    "lightningcss-win32-x64-msvc": "^1.32.0",
     "tailwindcss": "^4.1.14",
     "typescript": "~5.8.2",
     "vite": "^6.4.1"

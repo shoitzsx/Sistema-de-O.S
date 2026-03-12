@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { LogOut, User as UserIcon, ArrowLeft } from 'lucide-react';
+import { LogOut, User as UserIcon, ArrowLeft, RefreshCw, WifiOff, Wifi } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
+import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { getOfflineChecklistSyncSummary, processChecklistSyncQueue } from '../lib/offlineChecklist';
 import { getOfflineSyncSummary, processOfflineSyncQueue } from '../lib/offlineSync';
@@ -10,33 +11,65 @@ import { getOfflineSyncSummary, processOfflineSyncQueue } from '../lib/offlineSy
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [syncInfo, setSyncInfo] = useState({ online: true });
+  const [syncInfo, setSyncInfo] = useState({
+    online: true,
+    pending: 0,
+    error: 0,
+    syncing: false,
+    lastSyncAt: ''
+  });
 
-  useEffect(() => {
-    const refresh = async () => {
-      const [globalSummary, checklistSummary] = await Promise.all([
-        Promise.resolve(getOfflineSyncSummary()),
-        getOfflineChecklistSyncSummary(),
+  const refreshSyncInfo = async () => {
+    const [globalSummary, checklistSummary] = await Promise.all([
+      Promise.resolve(getOfflineSyncSummary()),
+      getOfflineChecklistSyncSummary(),
+    ]);
+
+    setSyncInfo((prev) => ({
+      ...prev,
+      online: globalSummary.online && checklistSummary.online,
+      pending: globalSummary.pending + checklistSummary.pending,
+      error: globalSummary.error + checklistSummary.error,
+    }));
+  };
+
+  const handleManualSync = async () => {
+    setSyncInfo((prev) => ({ ...prev, syncing: true }));
+
+    try {
+      await Promise.all([
+        processOfflineSyncQueue(),
+        processChecklistSyncQueue()
       ]);
 
-      setSyncInfo({
-        online: globalSummary.online && checklistSummary.online,
-      });
-    };
+      await refreshSyncInfo();
+      setSyncInfo((prev) => ({
+        ...prev,
+        syncing: false,
+        lastSyncAt: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+      }));
 
-    void refresh();
+      toast.success('Sincronização executada.');
+    } catch (err) {
+      setSyncInfo((prev) => ({ ...prev, syncing: false }));
+      toast.error('Falha ao sincronizar agora.');
+    }
+  };
+
+  useEffect(() => {
+    void refreshSyncInfo();
     const interval = setInterval(() => {
-      void refresh();
+      void refreshSyncInfo();
     }, 7000);
 
     const handleOnline = () => {
       void processOfflineSyncQueue();
       void processChecklistSyncQueue();
-      void refresh();
+      void refreshSyncInfo();
     };
 
     const handleOffline = () => {
-      void refresh();
+      void refreshSyncInfo();
     };
 
     window.addEventListener('online', handleOnline);
@@ -106,10 +139,34 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </header>
 
       <div className={`border-b px-4 sm:px-6 lg:px-8 py-2 text-xs ${syncInfo.online ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-900'}`}>
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
-          <span>
-            {syncInfo.online ? 'Conectado' : 'Modo offline'}
-          </span>
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div className="flex items-center gap-2">
+            {syncInfo.online ? <Wifi size={14} /> : <WifiOff size={14} />}
+            <span className="font-medium">
+              {syncInfo.online ? 'Conectado' : 'Modo offline'}
+            </span>
+            <span className="hidden sm:inline">|</span>
+            <span>
+              {syncInfo.pending} pendente(s)
+            </span>
+            {syncInfo.error > 0 && (
+              <span className="text-red-700 font-semibold">{syncInfo.error} com erro</span>
+            )}
+            {syncInfo.lastSyncAt && (
+              <span className="hidden md:inline text-slate-600">Última sincronização: {syncInfo.lastSyncAt}</span>
+            )}
+          </div>
+
+          <div>
+            <button
+              onClick={handleManualSync}
+              disabled={syncInfo.syncing}
+              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md border border-current/20 hover:bg-white/40 disabled:opacity-60 transition-colors"
+            >
+              <RefreshCw size={13} className={syncInfo.syncing ? 'animate-spin' : ''} />
+              {syncInfo.syncing ? 'Sincronizando...' : 'Sincronizar agora'}
+            </button>
+          </div>
         </div>
       </div>
       

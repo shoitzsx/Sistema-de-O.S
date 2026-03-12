@@ -76,3 +76,19 @@ export interface ChecklistTemplate {
   }>;
   created_at?: string;
 }
+
+export interface ChecklistSchedule {
+  id: number | string;
+  machine_id: number;
+  machine_name: string;
+  operator_id: number;
+  operator_name: string;
+  scheduled_date: string;
+  notes?: string;
+  status: 'pending' | 'completed' | 'cancelled';
+  completed_at?: string | null;
+  created_by_id: number;
+  created_by_name: string;
+  created_at?: string;
+  sync_status?: 'synced' | 'local-only';
+}

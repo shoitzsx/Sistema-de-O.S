@@ -1,4 +1,4 @@
-import { supabase, ServiceOrder, Machine, PartTool, User } from './supabase';
+import { supabase, ServiceOrder, Machine, PartTool, User, ChecklistSchedule } from './supabase';
 import {
   getUnsyncedChecklists,
   processChecklistSyncQueue,
@@ -54,6 +54,76 @@ function normalizeServiceOrder(order: any): ServiceOrder {
 
 const STORAGE_BUCKET = (import.meta.env.VITE_SUPABASE_STORAGE_BUCKET as string | undefined) || 'machines';
 const STORAGE_BUCKET_CANDIDATES = Array.from(new Set([STORAGE_BUCKET, 'machines', 'manuals']));
+const CHECKLIST_SCHEDULES_STORAGE_KEY = 'checklist-schedules:v1';
+const CHECKLIST_SCHEDULES_REMOTE_DISABLED_KEY = 'checklist-schedules-remote-disabled:v1';
+
+let remoteChecklistSchedulesAllowed: boolean | null = null;
+
+function isChecklistSchedulesRemoteEnabled(): boolean {
+  if (remoteChecklistSchedulesAllowed !== null) {
+    return remoteChecklistSchedulesAllowed;
+  }
+
+  if (typeof window === 'undefined') {
+    remoteChecklistSchedulesAllowed = true;
+    return true;
+  }
+
+  remoteChecklistSchedulesAllowed = localStorage.getItem(CHECKLIST_SCHEDULES_REMOTE_DISABLED_KEY) !== '1';
+  return remoteChecklistSchedulesAllowed;
+}
+
+function disableChecklistSchedulesRemote() {
+  remoteChecklistSchedulesAllowed = false;
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(CHECKLIST_SCHEDULES_REMOTE_DISABLED_KEY, '1');
+  }
+}
+
+function readLocalChecklistSchedules(): ChecklistSchedule[] {
+  if (typeof window === 'undefined') return [];
+
+  const raw = localStorage.getItem(CHECKLIST_SCHEDULES_STORAGE_KEY);
+  if (!raw) return [];
+
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as ChecklistSchedule[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalChecklistSchedules(rows: ChecklistSchedule[]) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(CHECKLIST_SCHEDULES_STORAGE_KEY, JSON.stringify(rows.slice(0, 1500)));
+}
+
+function sortChecklistSchedules(rows: ChecklistSchedule[]): ChecklistSchedule[] {
+  return [...rows].sort((a, b) => {
+    const dayDiff = new Date(a.scheduled_date).getTime() - new Date(b.scheduled_date).getTime();
+    if (dayDiff !== 0) return dayDiff;
+    return new Date(a.created_at || '').getTime() - new Date(b.created_at || '').getTime();
+  });
+}
+
+function normalizeChecklistSchedule(raw: any, syncStatus: 'synced' | 'local-only' = 'synced'): ChecklistSchedule {
+  return {
+    id: raw.id,
+    machine_id: Number(raw.machine_id),
+    machine_name: String(raw.machine_name || 'Maquina'),
+    operator_id: Number(raw.operator_id),
+    operator_name: String(raw.operator_name || 'Operador'),
+    scheduled_date: String(raw.scheduled_date || new Date().toISOString().slice(0, 10)),
+    notes: raw.notes ? String(raw.notes) : '',
+    status: (raw.status || 'pending') as ChecklistSchedule['status'],
+    completed_at: raw.completed_at || null,
+    created_by_id: Number(raw.created_by_id || 0),
+    created_by_name: String(raw.created_by_name || 'Administrador'),
+    created_at: String(raw.created_at || new Date().toISOString()),
+    sync_status: syncStatus,
+  };
+}
 
 async function uploadWithBucketFallback(
   fileName: string,
@@ -688,6 +758,171 @@ export async function createChecklist(checklist: any): Promise<any> {
       return null;
     }
   }
+}
+
+export async function getChecklistSchedules(params?: {
+  operatorId?: number;
+  includePast?: boolean;
+}): Promise<ChecklistSchedule[]> {
+  const includePast = Boolean(params?.includePast);
+  const localRows = readLocalChecklistSchedules();
+
+  const filterRows = (rows: ChecklistSchedule[]) => {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    return rows.filter((row) => {
+      if (typeof params?.operatorId === 'number' && row.operator_id !== params.operatorId) return false;
+      if (!includePast && row.status === 'completed') return false;
+      if (!includePast) {
+        const day = new Date(`${row.scheduled_date}T00:00:00`).getTime();
+        if (Number.isFinite(day) && day < startOfToday.getTime() && row.status !== 'pending') return false;
+      }
+      return true;
+    });
+  };
+
+  if (!isBrowserOnline() || !isChecklistSchedulesRemoteEnabled()) {
+    return sortChecklistSchedules(filterRows(localRows));
+  }
+
+  try {
+    let query = supabase
+      .from('checklist_schedules')
+      .select('*')
+      .order('scheduled_date', { ascending: true })
+      .order('created_at', { ascending: false })
+      .limit(1000);
+
+    if (typeof params?.operatorId === 'number') {
+      query = query.eq('operator_id', params.operatorId);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      if (error.code === 'PGRST205' || error.code === '42P01') {
+        disableChecklistSchedulesRemote();
+      }
+      return sortChecklistSchedules(filterRows(localRows));
+    }
+
+    const remoteRows = (data || []).map((row) => normalizeChecklistSchedule(row, 'synced'));
+    const merged = [...remoteRows, ...localRows.filter((row) => row.sync_status === 'local-only')];
+
+    return sortChecklistSchedules(filterRows(merged));
+  } catch (err: any) {
+    const message = String(err?.message || '');
+    if (message.includes('404') || message.toLowerCase().includes('checklist_schedules')) {
+      disableChecklistSchedulesRemote();
+    }
+    return sortChecklistSchedules(filterRows(localRows));
+  }
+}
+
+export async function createChecklistSchedule(input: {
+  machine_id: number;
+  machine_name: string;
+  operator_id: number;
+  operator_name: string;
+  scheduled_date: string;
+  notes?: string;
+  created_by_id: number;
+  created_by_name: string;
+}): Promise<ChecklistSchedule | null> {
+  const payload = {
+    machine_id: input.machine_id,
+    machine_name: input.machine_name,
+    operator_id: input.operator_id,
+    operator_name: input.operator_name,
+    scheduled_date: input.scheduled_date,
+    notes: input.notes || '',
+    status: 'pending',
+    created_by_id: input.created_by_id,
+    created_by_name: input.created_by_name,
+  };
+
+  if (isBrowserOnline() && isChecklistSchedulesRemoteEnabled()) {
+    try {
+      const { data, error } = await supabase
+        .from('checklist_schedules')
+        .insert([payload])
+        .select()
+        .single();
+
+      if (!error && data) {
+        return normalizeChecklistSchedule(data, 'synced');
+      }
+
+      if (error && (error.code === 'PGRST205' || error.code === '42P01')) {
+        disableChecklistSchedulesRemote();
+      }
+    } catch (err: any) {
+      const message = String(err?.message || '');
+      if (message.includes('404') || message.toLowerCase().includes('checklist_schedules')) {
+        disableChecklistSchedulesRemote();
+      }
+    }
+  }
+
+  const localRow: ChecklistSchedule = {
+    id: `cs_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    ...payload,
+    status: 'pending',
+    completed_at: null,
+    created_at: new Date().toISOString(),
+    sync_status: 'local-only',
+  };
+
+  const current = readLocalChecklistSchedules();
+  writeLocalChecklistSchedules([localRow, ...current]);
+  return localRow;
+}
+
+export async function completeChecklistSchedulesForMachine(operatorId: number, machineId: number): Promise<void> {
+  const nowIso = new Date().toISOString();
+  const todayIso = nowIso.slice(0, 10);
+
+  if (isBrowserOnline() && isChecklistSchedulesRemoteEnabled()) {
+    try {
+      const { error } = await supabase
+        .from('checklist_schedules')
+        .update({ status: 'completed', completed_at: nowIso })
+        .eq('operator_id', operatorId)
+        .eq('machine_id', machineId)
+        .eq('status', 'pending')
+        .lte('scheduled_date', todayIso);
+
+      if (!error) return;
+
+      if (error.code === 'PGRST205' || error.code === '42P01') {
+        disableChecklistSchedulesRemote();
+      }
+    } catch (err: any) {
+      const message = String(err?.message || '');
+      if (message.includes('404') || message.toLowerCase().includes('checklist_schedules')) {
+        disableChecklistSchedulesRemote();
+      }
+    }
+  }
+
+  const current = readLocalChecklistSchedules();
+  const next = current.map((item) => {
+    if (item.operator_id !== operatorId || item.machine_id !== machineId || item.status !== 'pending') {
+      return item;
+    }
+
+    if (item.scheduled_date > todayIso) {
+      return item;
+    }
+
+    return {
+      ...item,
+      status: 'completed' as const,
+      completed_at: nowIso,
+    };
+  });
+
+  writeLocalChecklistSchedules(next);
 }
 
 // ===== CHECKLIST TEMPLATES =====

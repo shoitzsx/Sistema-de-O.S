@@ -6,9 +6,37 @@ import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
 import { CheckCircle, XCircle, MinusCircle, ChevronRight, Save, Calendar, ChevronDown, ChevronUp, AlertCircle, Plus, Trash2, Settings } from 'lucide-react';
 import clsx from 'clsx';
-import { getMachines, getChecklistTemplateByModel, createChecklist } from '../lib/supabaseApi';
+import {
+  getMachines,
+  getChecklistTemplateByModel,
+  createChecklist,
+  getUsers,
+  getChecklistSchedules,
+  createChecklistSchedule,
+  completeChecklistSchedulesForMachine,
+} from '../lib/supabaseApi';
 import { getOfflineChecklistSyncSummary } from '../lib/offlineChecklist';
 import { supabase } from '../lib/supabase';
+import { showBrowserNotification } from '../lib/browserNotifications';
+
+interface ChecklistSchedule {
+  id: number | string;
+  machine_id: number;
+  machine_name: string;
+  operator_id: number;
+  operator_name: string;
+  scheduled_date: string;
+  notes?: string;
+  status: 'pending' | 'completed' | 'cancelled';
+  created_by_name: string;
+}
+
+interface ChecklistOperator {
+  id: number;
+  name: string;
+  allowed_modules: number[];
+  role: 'admin' | 'operator';
+}
 
 interface ChecklistItem {
   status: 'ok' | 'nok' | 'na' | null;
@@ -59,6 +87,17 @@ export default function Checklist() {
   const [nokItemsToConfirm, setNokItemsToConfirm] = useState<string[]>([]);
   const [showNokConfirmDialog, setShowNokConfirmDialog] = useState(false);
   const [syncSummary, setSyncSummary] = useState({ pending: 0, error: 0, online: true });
+  const [operators, setOperators] = useState<ChecklistOperator[]>([]);
+  const [schedules, setSchedules] = useState<ChecklistSchedule[]>([]);
+  const [calendarDate, setCalendarDate] = useState(new Date());
+  const [selectedCalendarDay, setSelectedCalendarDay] = useState<string | null>(null);
+  const [isCreatingSchedule, setIsCreatingSchedule] = useState(false);
+  const [scheduleForm, setScheduleForm] = useState({
+    operator_id: '',
+    machine_id: '',
+    scheduled_date: '',
+    notes: '',
+  });
   useEffect(() => {
     loadMachines();
   }, []);
@@ -104,6 +143,159 @@ export default function Checklist() {
       toast.error('Erro ao carregar máquinas');
     }
   };
+
+  const loadSchedules = async () => {
+    if (!user) return;
+
+    try {
+      const data = await getChecklistSchedules({
+        operatorId: isAdmin ? undefined : user.id,
+        includePast: true,
+      });
+      setSchedules(data as ChecklistSchedule[]);
+    } catch (err) {
+      console.error('Erro ao carregar agendamentos:', err);
+      setSchedules([]);
+    }
+  };
+
+  const loadOperators = async () => {
+    if (!isAdmin) return;
+
+    try {
+      const data = await getUsers();
+      const eligible = (data || []).filter((item) => {
+        const normalizedRole = String(item.role || '').trim().toLowerCase();
+        if (normalizedRole === 'admin' || normalizedRole === 'administrador') return false;
+        return (item.allowed_modules || []).includes(2);
+      });
+
+      setOperators(
+        eligible.map((item) => ({
+          id: item.id,
+          name: item.name,
+          allowed_modules: item.allowed_modules || [],
+          role: item.role,
+        }))
+      );
+    } catch (err) {
+      console.error('Erro ao carregar operadores:', err);
+      setOperators([]);
+    }
+  };
+
+  useEffect(() => {
+    if (!user) return;
+    void loadSchedules();
+    void loadOperators();
+  }, [user?.id, isAdmin]);
+
+  useEffect(() => {
+    if (!user || isAdmin) return;
+
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const dueToday = schedules.filter(
+      (item) =>
+        item.operator_id === user.id &&
+        item.status === 'pending' &&
+        item.scheduled_date === todayIso
+    );
+
+    const upcomingCount = schedules.filter(
+      (item) =>
+        item.operator_id === user.id &&
+        item.status === 'pending' &&
+        item.scheduled_date >= todayIso
+    ).length;
+
+    const dedupeKey = `checklist-schedule-alert:${user.id}:${todayIso}`;
+    if (localStorage.getItem(dedupeKey) === '1') return;
+
+    if (dueToday.length > 0) {
+      toast.info(`Voce tem ${dueToday.length} checklist(s) agendado(s) para hoje.`);
+      if (typeof document !== 'undefined' && document.hidden) {
+        showBrowserNotification(
+          'Checklist Agendado',
+          `Voce tem ${dueToday.length} checklist(s) agendado(s) para hoje.`,
+          { tag: `checklist-schedule-${user.id}`, navigateTo: '/checklist' }
+        );
+      }
+      localStorage.setItem(dedupeKey, '1');
+      return;
+    }
+
+    if (upcomingCount > 0) {
+      toast.info(`Voce possui ${upcomingCount} checklist(s) agendado(s).`);
+      localStorage.setItem(dedupeKey, '1');
+    }
+  }, [schedules, user, isAdmin]);
+
+  const handleCreateSchedule = async () => {
+    if (!user || !isAdmin) return;
+
+    const operatorId = Number(scheduleForm.operator_id);
+    const machineId = Number(scheduleForm.machine_id);
+    const scheduledDate = scheduleForm.scheduled_date;
+
+    if (!operatorId || !machineId || !scheduledDate) {
+      toast.error('Preencha operador, maquina e data do agendamento.');
+      return;
+    }
+
+    const operator = operators.find((item) => item.id === operatorId);
+    const machine = machines.find((item) => item.id === machineId);
+
+    if (!operator || !machine) {
+      toast.error('Operador ou maquina invalida para agendamento.');
+      return;
+    }
+
+    try {
+      setIsCreatingSchedule(true);
+      const result = await createChecklistSchedule({
+        operator_id: operator.id,
+        operator_name: operator.name,
+        machine_id: machine.id,
+        machine_name: machine.name,
+        scheduled_date: scheduledDate,
+        notes: scheduleForm.notes.trim(),
+        created_by_id: user.id,
+        created_by_name: user.name,
+      });
+
+      if (!result) {
+        toast.error('Nao foi possivel criar o agendamento.');
+        return;
+      }
+
+      toast.success('Agendamento criado com sucesso.');
+      setScheduleForm({ operator_id: '', machine_id: '', scheduled_date: '', notes: '' });
+      await loadSchedules();
+    } catch (err) {
+      console.error('Erro ao criar agendamento:', err);
+      toast.error('Erro ao criar agendamento.');
+    } finally {
+      setIsCreatingSchedule(false);
+    }
+  };
+
+  const visibleSchedules = schedules
+    .filter((item) => {
+      if (selectedCalendarDay && item.scheduled_date !== selectedCalendarDay) return false;
+      if (!isAdmin && user && item.operator_id !== user.id) return false;
+      return true;
+    })
+    .sort((a, b) => new Date(a.scheduled_date).getTime() - new Date(b.scheduled_date).getTime());
+
+  const monthStart = new Date(calendarDate.getFullYear(), calendarDate.getMonth(), 1);
+  const monthEnd = new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 0);
+  const firstWeekday = monthStart.getDay();
+  const daysInMonth = monthEnd.getDate();
+
+  const scheduleCountByDay = schedules.reduce<Record<string, number>>((acc, item) => {
+    acc[item.scheduled_date] = (acc[item.scheduled_date] || 0) + 1;
+    return acc;
+  }, {});
 
   useEffect(() => {
     if (editingModel) {
@@ -324,6 +516,8 @@ export default function Checklist() {
 
       const summary = await getOfflineChecklistSyncSummary();
       setSyncSummary(summary);
+      await completeChecklistSchedulesForMachine(user.id, selectedMachine.id);
+      await loadSchedules();
       setSelectedMachine(null);
       setChecklistData({});
     } catch (err) {
@@ -449,6 +643,180 @@ export default function Checklist() {
                 </p>
               </div>
             </div>
+
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 md:p-5 mb-6">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">Calendario de Agendamento de Checklist</h3>
+                  <p className="text-sm text-slate-500">
+                    {isAdmin
+                      ? 'Defina data, maquina e operador para o checklist mensal.'
+                      : 'Visualize seus agendamentos de checklist definidos pelo administrador.'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))}
+                    className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700"
+                  >
+                    &larr;
+                  </button>
+                  <div className="text-sm font-semibold text-slate-700 min-w-[130px] text-center">
+                    {calendarDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+                  </div>
+                  <button
+                    onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))}
+                    className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700"
+                  >
+                    &rarr;
+                  </button>
+                </div>
+              </div>
+
+              {isAdmin && (
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-5">
+                  <select
+                    value={scheduleForm.operator_id}
+                    onChange={(e) => setScheduleForm((prev) => ({ ...prev, operator_id: e.target.value }))}
+                    className="md:col-span-1 p-2.5 border border-slate-200 rounded-lg"
+                  >
+                    <option value="">Operador</option>
+                    {operators.map((operator) => (
+                      <option key={operator.id} value={operator.id}>{operator.name}</option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={scheduleForm.machine_id}
+                    onChange={(e) => setScheduleForm((prev) => ({ ...prev, machine_id: e.target.value }))}
+                    className="md:col-span-1 p-2.5 border border-slate-200 rounded-lg"
+                  >
+                    <option value="">Maquina</option>
+                    {machines.map((machine) => (
+                      <option key={machine.id} value={machine.id}>{machine.name}</option>
+                    ))}
+                  </select>
+
+                  <input
+                    type="date"
+                    value={scheduleForm.scheduled_date}
+                    onChange={(e) => setScheduleForm((prev) => ({ ...prev, scheduled_date: e.target.value }))}
+                    className="md:col-span-1 p-2.5 border border-slate-200 rounded-lg"
+                  />
+
+                  <input
+                    value={scheduleForm.notes}
+                    onChange={(e) => setScheduleForm((prev) => ({ ...prev, notes: e.target.value }))}
+                    placeholder="Observacao (opcional)"
+                    className="md:col-span-1 p-2.5 border border-slate-200 rounded-lg"
+                  />
+
+                  <button
+                    onClick={handleCreateSchedule}
+                    disabled={isCreatingSchedule}
+                    className="md:col-span-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold px-4 py-2.5 disabled:opacity-60"
+                  >
+                    {isCreatingSchedule ? 'Agendando...' : 'Agendar'}
+                  </button>
+                </div>
+              )}
+
+              <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-500 mb-1">
+                <div>Dom</div>
+                <div>Seg</div>
+                <div>Ter</div>
+                <div>Qua</div>
+                <div>Qui</div>
+                <div>Sex</div>
+                <div>Sab</div>
+              </div>
+
+              <div className="grid grid-cols-7 gap-1">
+                {Array.from({ length: firstWeekday }).map((_, idx) => (
+                  <div key={`empty-${idx}`} className="h-14 rounded-lg bg-slate-50" />
+                ))}
+
+                {Array.from({ length: daysInMonth }).map((_, idx) => {
+                  const day = idx + 1;
+                  const dayIso = `${calendarDate.getFullYear()}-${String(calendarDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                  const count = scheduleCountByDay[dayIso] || 0;
+                  const isSelected = selectedCalendarDay === dayIso;
+
+                  return (
+                    <button
+                      key={dayIso}
+                      onClick={() => setSelectedCalendarDay((prev) => (prev === dayIso ? null : dayIso))}
+                      className={clsx(
+                        'h-14 rounded-lg border text-left px-2 py-1 transition-colors',
+                        isSelected
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-slate-200 hover:border-blue-300 hover:bg-slate-50'
+                      )}
+                    >
+                      <div className="text-xs font-semibold text-slate-700">{day}</div>
+                      {count > 0 && (
+                        <div className="mt-1 inline-flex items-center justify-center text-[10px] px-1.5 py-0.5 rounded-full bg-blue-600 text-white">
+                          {count}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-4 border-t border-slate-100 pt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-semibold text-slate-700">
+                    {selectedCalendarDay
+                      ? `Agendamentos em ${new Date(`${selectedCalendarDay}T00:00:00`).toLocaleDateString('pt-BR')}`
+                      : 'Proximos agendamentos'}
+                  </h4>
+                  {selectedCalendarDay && (
+                    <button
+                      onClick={() => setSelectedCalendarDay(null)}
+                      className="text-xs text-slate-500 hover:text-slate-700"
+                    >
+                      Limpar filtro do dia
+                    </button>
+                  )}
+                </div>
+
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  {visibleSchedules.length === 0 && (
+                    <div className="text-sm text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-3">
+                      Nenhum agendamento encontrado para o filtro atual.
+                    </div>
+                  )}
+                  {visibleSchedules.map((item) => (
+                    <div key={String(item.id)} className="border border-slate-200 rounded-lg p-3 bg-slate-50">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="font-semibold text-slate-800 text-sm">{item.machine_name}</div>
+                        <span className={clsx(
+                          'text-xs px-2 py-1 rounded-full',
+                          item.status === 'completed'
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : item.status === 'cancelled'
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-blue-100 text-blue-700'
+                        )}>
+                          {item.status === 'completed' ? 'Concluido' : item.status === 'cancelled' ? 'Cancelado' : 'Pendente'}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-600 mt-1">
+                        Data: {new Date(`${item.scheduled_date}T00:00:00`).toLocaleDateString('pt-BR')} | Operador: {item.operator_name}
+                      </div>
+                      {item.notes && (
+                        <div className="text-xs text-slate-600 mt-1">Obs: {item.notes}</div>
+                      )}
+                      {isAdmin && (
+                        <div className="text-[11px] text-slate-500 mt-1">Agendado por {item.created_by_name}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {machines.map(machine => (
                 <button

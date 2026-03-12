@@ -177,14 +177,6 @@ export default function Dashboard() {
 
   const modules = [
     {
-      id: 8,
-      name: 'Painel de Controle',
-      description: 'Acompanhe indicadores principais de manutenção em tempo real.',
-      icon: Activity,
-      color: 'bg-sky-500',
-      path: '/control-panel'
-    },
-    {
       id: 1,
       name: 'Manuais Técnicos',
       description: 'Gerenciar manuais e documentação de equipamentos.',
@@ -217,20 +209,28 @@ export default function Dashboard() {
       path: '/history'
     },
     {
-      id: 5,
-      name: 'Gerenciar Usuários',
-      description: 'Criar, editar e remover usuários do sistema.',
-      icon: Users,
-      color: 'bg-purple-500',
-      path: '/users'
-    },
-    {
       id: 6,
       name: 'Histórico de Inspeção',
       description: 'Consulte o histórico mensal de inspeções de checklist.',
       icon: History,
       color: 'bg-cyan-500',
       path: '/checklist-history'
+    },
+    {
+      id: 8,
+      name: 'Painel de Controle',
+      description: 'Acompanhe indicadores principais de manutenção em tempo real.',
+      icon: Activity,
+      color: 'bg-sky-500',
+      path: '/control-panel'
+    },
+    {
+      id: 5,
+      name: 'Gerenciar Usuários',
+      description: 'Criar, editar e remover usuários do sistema.',
+      icon: Users,
+      color: 'bg-purple-500',
+      path: '/users'
     },
     {
       id: 7,

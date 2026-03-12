@@ -15,13 +15,14 @@ interface User {
 }
 
 const MODULES = [
-  { id: 8, name: 'Painel de Controle', icon: '📊' },
   { id: 1, name: 'Manuais Técnicos', icon: '📚' },
   { id: 2, name: 'Checklist Mensal', icon: '✅' },
-  { id: 3, name: 'Manutenção Corretiva', icon: '🔧' },
+  { id: 3, name: 'Ordens de Serviço', icon: '🔧' },
   { id: 4, name: 'Histórico de O.S', icon: '📋' },
+  { id: 6, name: 'Histórico de Inspeção', icon: '🧾' },
+  { id: 8, name: 'Painel de Controle', icon: '📊' },
   { id: 5, name: 'Gerenciar Usuários', icon: '👥' },
-  { id: 6, name: 'Histórico de Inspeção', icon: '🧾' }
+  { id: 7, name: 'Auditoria de Ações', icon: '🛡️' }
 ];
 
 export default function UserManagement() {

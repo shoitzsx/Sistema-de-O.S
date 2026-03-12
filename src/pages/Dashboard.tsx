@@ -1,6 +1,6 @@
 import { useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
-import { Wrench, History, BookOpen, CheckSquare, Users, Activity, AlertTriangle, CheckCircle2, Timer, ShieldCheck, Bell, GraduationCap } from 'lucide-react';
+import { Wrench, History, BookOpen, CheckSquare, Users, Activity, ShieldCheck, Bell, GraduationCap } from 'lucide-react';
 import Layout from '../components/Layout';
 import { motion } from 'motion/react';
 import { useEffect, useMemo, useState } from 'react';
@@ -400,40 +400,6 @@ export default function Dashboard() {
               <Bell size={16} /> Configurar notificações
             </button>
           </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-7">
-        <div className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-medium text-slate-600">O.S abertas</p>
-            <Activity size={18} className="text-blue-600" />
-          </div>
-          <p className="text-3xl font-bold text-slate-900">{kpis.open}</p>
-        </div>
-
-        <div className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-medium text-slate-600">O.S em atraso</p>
-            <AlertTriangle size={18} className="text-amber-600" />
-          </div>
-          <p className="text-3xl font-bold text-slate-900">{kpis.overdue}</p>
-        </div>
-
-        <div className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-medium text-slate-600">Finalizadas hoje</p>
-            <CheckCircle2 size={18} className="text-emerald-600" />
-          </div>
-          <p className="text-3xl font-bold text-slate-900">{kpis.closedToday}</p>
-        </div>
-
-        <div className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-medium text-slate-600">Tempo médio de fechamento</p>
-            <Timer size={18} className="text-violet-600" />
-          </div>
-          <p className="text-3xl font-bold text-slate-900">{kpis.avgCloseHours.toFixed(1)}h</p>
         </div>
       </div>
 

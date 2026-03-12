@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -116,6 +116,9 @@ export default function Checklist() {
   const [isTvMode, setIsTvMode] = useState(false);
   const [tvOrders, setTvOrders] = useState<TvServiceOrderSummary[]>([]);
   const [tvChecklists, setTvChecklists] = useState<TvChecklistSummary[]>([]);
+  const [tvLiveNotice, setTvLiveNotice] = useState<string | null>(null);
+  const tvMetricsRef = useRef<{ openOrders: number; pendingChecklists: number } | null>(null);
+  const tvNoticeTimerRef = useRef<number | null>(null);
   const [scheduleForm, setScheduleForm] = useState({
     operator_id: '',
     machine_id: '',
@@ -490,6 +493,45 @@ export default function Checklist() {
     ? (tvVisibleChecklists.filter((entry) => entry.status === 'completed').length / tvVisibleChecklists.length) * 100
     : 0;
 
+  useEffect(() => {
+    if (!isTvMode) {
+      tvMetricsRef.current = null;
+      if (tvNoticeTimerRef.current) {
+        window.clearTimeout(tvNoticeTimerRef.current);
+        tvNoticeTimerRef.current = null;
+      }
+      setTvLiveNotice(null);
+      return;
+    }
+
+    const previous = tvMetricsRef.current;
+    const current = {
+      openOrders: tvOpenOrders,
+      pendingChecklists: tvPendingChecklists,
+    };
+
+    if (previous) {
+      if (current.openOrders > previous.openOrders) {
+        setTvLiveNotice('Nova O.S entrou agora no sistema.');
+      } else if (current.pendingChecklists > previous.pendingChecklists) {
+        setTvLiveNotice('Novo checklist pendente detectado.');
+      }
+
+      if (tvLiveNotice && tvNoticeTimerRef.current) {
+        window.clearTimeout(tvNoticeTimerRef.current);
+      }
+
+      if (tvLiveNotice || current.openOrders > previous.openOrders || current.pendingChecklists > previous.pendingChecklists) {
+        tvNoticeTimerRef.current = window.setTimeout(() => {
+          setTvLiveNotice(null);
+          tvNoticeTimerRef.current = null;
+        }, 6000);
+      }
+    }
+
+    tvMetricsRef.current = current;
+  }, [isTvMode, tvOpenOrders, tvPendingChecklists, tvLiveNotice]);
+
   const getStatusLabel = (status: ChecklistSchedule['status']) => {
     if (status === 'completed') return 'Concluido';
     if (status === 'cancelled') return 'Cancelado';
@@ -817,6 +859,14 @@ export default function Checklist() {
         <NokConfirmDialog />
         {isTvMode && (
           <div className="fixed inset-0 z-[90] bg-gradient-to-br from-emerald-100 via-white to-emerald-50 text-slate-900 p-4 md:p-6 overflow-hidden">
+            {tvLiveNotice && (
+              <div className="fixed top-24 right-6 z-[95] pointer-events-none max-w-sm">
+                <div className="rounded-xl border border-emerald-300 bg-white/95 backdrop-blur px-4 py-3 shadow-lg flex items-start gap-2 animate-pulse">
+                  <AlertCircle size={16} className="text-emerald-700 mt-0.5" />
+                  <p className="text-sm font-medium text-slate-700">{tvLiveNotice}</p>
+                </div>
+              </div>
+            )}
             <div className="h-full flex flex-col">
               <div className="flex items-center justify-between gap-3 border-b border-emerald-200 pb-4 mb-4">
                 <div>

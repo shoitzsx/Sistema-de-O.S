@@ -75,9 +75,15 @@ export default function ServiceOrders() {
   const [editReportModalOpen, setEditReportModalOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<ServiceOrder | null>(null);
   const [editReport, setEditReport] = useState('');
+  const [editReason, setEditReason] = useState('');
   const [editTools, setEditTools] = useState<string[]>([]);
   const [editToolsInput, setEditToolsInput] = useState('');
   const [editComponent, setEditComponent] = useState('');
+  const [finishReason, setFinishReason] = useState('');
+  const [reopenModalOpen, setReopenModalOpen] = useState(false);
+  const [reopeningOrder, setReopeningOrder] = useState<ServiceOrder | null>(null);
+  const [reopenReason, setReopenReason] = useState('');
+  const [isReopeningOrder, setIsReopeningOrder] = useState(false);
   const [clockMs, setClockMs] = useState<number>(() => Date.now());
   const liveTimerBaseRef = useRef<Record<number, { baseDiffMs: number; baseAtMs: number }>>({});
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
@@ -102,6 +108,25 @@ export default function ServiceOrders() {
   tools: [] as string[],
   toolsInput: ''
 });
+
+  const canCreateOrder = Boolean(user);
+  const canDeleteOrder = isAdmin;
+  const canOpenPartsToolsManager = isAdmin;
+  const canExportOrders = isAdmin;
+
+  const canFinalizeOrder = (order: ServiceOrder) => {
+    if (!user) return false;
+    if (isAdmin) return true;
+    return order.operator_id === user.id;
+  };
+
+  const canEditOrder = (order: ServiceOrder) => {
+    if (!user) return false;
+    if (isAdmin) return true;
+    return order.operator_id === user.id;
+  };
+
+  const canReopenOrder = () => isAdmin;
   useEffect(() => {
     if (!user) return;
 
@@ -525,6 +550,47 @@ export default function ServiceOrders() {
     setStatusFilter(filter.status);
   };
 
+  const exportOrdersCsv = () => {
+    if (!canExportOrders) {
+      toast.error('Sem permissão para exportar.');
+      return;
+    }
+
+    const header = [
+      'id',
+      'maquina',
+      'status',
+      'tipo_manutencao',
+      'responsavel',
+      'componente',
+      'inicio',
+      'fim'
+    ];
+
+    const escapeCell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const rows = filteredOrders.map((order) => [
+      order.id,
+      order.machine_name,
+      order.status,
+      order.maintenance_type,
+      order.technician_name,
+      order.component,
+      order.start_time,
+      order.end_time || '',
+    ]);
+
+    const csv = [header, ...rows].map((line) => line.map(escapeCell).join(';')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `ordens-servico-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <Layout>
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-8">
@@ -533,7 +599,7 @@ export default function ServiceOrders() {
           <p className="text-slate-500">Gerenciamento de ordens de serviço</p>
         </div>
         <div className="flex flex-wrap items-stretch gap-2 sm:gap-3 w-full sm:w-auto">
-          {isAdmin && (
+          {canDeleteOrder && (
             <button
               onClick={openDeleteModal}
               className="bg-red-600 hover:bg-red-700 text-white font-medium py-2.5 px-4 sm:px-5 rounded-xl shadow-lg shadow-red-600/20 flex items-center justify-center gap-2 transition-all w-full sm:w-auto"
@@ -541,7 +607,7 @@ export default function ServiceOrders() {
               Excluir O.S
             </button>
           )}
-          {isAdmin && (
+          {canOpenPartsToolsManager && (
             <button
               onClick={() => setIsPartsToolsModalOpen(true)}
               className="bg-purple-600 hover:bg-purple-700 text-white font-medium py-2.5 px-4 sm:px-5 rounded-xl shadow-lg shadow-purple-600/20 flex items-center justify-center gap-2 transition-all w-full sm:w-auto"
@@ -549,12 +615,22 @@ export default function ServiceOrders() {
               <Package size={20} /> Cadastrar Peça/Ferramenta
             </button>
           )}
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="bg-orange-500 hover:bg-orange-600 text-white font-medium py-2.5 px-4 sm:px-5 rounded-xl shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2 transition-all w-full sm:w-auto"
-          >
-            <Plus size={20} /> Nova O.S.
-          </button>
+          {canExportOrders && (
+            <button
+              onClick={exportOrdersCsv}
+              className="bg-slate-700 hover:bg-slate-800 text-white font-medium py-2.5 px-4 sm:px-5 rounded-xl shadow-lg shadow-slate-700/20 flex items-center justify-center gap-2 transition-all w-full sm:w-auto"
+            >
+              Exportar CSV
+            </button>
+          )}
+          {canCreateOrder && (
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="bg-orange-500 hover:bg-orange-600 text-white font-medium py-2.5 px-4 sm:px-5 rounded-xl shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2 transition-all w-full sm:w-auto"
+            >
+              <Plus size={20} /> Nova O.S.
+            </button>
+          )}
         </div>
       </div>
 
@@ -684,30 +760,48 @@ export default function ServiceOrders() {
 
               <div className="flex flex-col gap-2">
                 {order.status === 'open' ? (
-                  <button
-                    onClick={() => {
-                      setFinishingOrderId(order.id);
-                      setFinalReport('');
-                      setFinishModalOpen(true);
-                    }}
-                    className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
-                  >
-                    <Square size={16} fill="currentColor" /> Finalizar
-                  </button>
-                ) : (
-                  <div className="flex gap-2">
+                  canFinalizeOrder(order) && (
                     <button
                       onClick={() => {
-                        setEditingOrder(order);
-                        setEditReport(order.final_report || '');
-                        setEditTools(order.tools || []);
-                        setEditComponent(order.component || '');
-                        setEditReportModalOpen(true);
+                        setFinishingOrderId(order.id);
+                        setFinalReport('');
+                        setFinishReason('');
+                        setFinishModalOpen(true);
                       }}
-                      className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium"
+                      className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
                     >
-                      Editar Relatório
+                      <Square size={16} fill="currentColor" /> Finalizar
                     </button>
+                  )
+                ) : (
+                  <div className="flex gap-2">
+                    {canEditOrder(order) && (
+                      <button
+                        onClick={() => {
+                          setEditingOrder(order);
+                          setEditReport(order.final_report || '');
+                          setEditTools(order.tools || []);
+                          setEditComponent(order.component || '');
+                          setEditReason('');
+                          setEditReportModalOpen(true);
+                        }}
+                        className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium"
+                      >
+                        Editar Relatório
+                      </button>
+                    )}
+                    {canReopenOrder() && (
+                      <button
+                        onClick={() => {
+                          setReopeningOrder(order);
+                          setReopenReason('');
+                          setReopenModalOpen(true);
+                        }}
+                        className="bg-amber-100 hover:bg-amber-200 text-amber-800 px-4 py-2 rounded-lg text-sm font-medium"
+                      >
+                        Reabrir O.S
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -1102,6 +1196,13 @@ export default function ServiceOrders() {
                 rows={5}
                 placeholder="Ex: Substituído motor, realizado teste, tudo ok..."
               />
+              <label className="block text-sm font-medium text-slate-700 mt-4 mb-1">Motivo da alteração de status *</label>
+              <input
+                value={finishReason}
+                onChange={(e) => setFinishReason(e.target.value)}
+                className="w-full p-3 rounded-lg border border-slate-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none"
+                placeholder="Ex: Serviço concluído após validação"
+              />
               <div className="flex flex-col sm:flex-row gap-3 mt-6">
                 <button
                   onClick={() => setFinishModalOpen(false)}
@@ -1113,6 +1214,10 @@ export default function ServiceOrders() {
                   onClick={async () => {
                     if (!finishingOrderId) return;
                     if (!user) return;
+                    if (!finishReason.trim()) {
+                      toast.error('Informe o motivo da alteração de status.');
+                      return;
+                    }
                     try {
                       const result = await closeServiceOrder(
                         finishingOrderId,
@@ -1129,6 +1234,9 @@ export default function ServiceOrders() {
                             role: user.role,
                           },
                           details: {
+                            status_from: 'open',
+                            status_to: 'closed',
+                            reason: finishReason.trim(),
                             has_final_report: Boolean(finalReport?.trim()),
                           },
                         });
@@ -1137,6 +1245,7 @@ export default function ServiceOrders() {
                         await fetchOrders();
                         setFinishModalOpen(false);
                         setFinalReport('');
+                        setFinishReason('');
                         setFinishingOrderId(null);
                       } else {
                         toast.error('Erro ao finalizar ordem de serviço.');
@@ -1189,6 +1298,14 @@ export default function ServiceOrders() {
                   </span>
                 ))}
               </div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Motivo da alteração *</label>
+              <input
+                type="text"
+                value={editReason}
+                onChange={(e) => setEditReason(e.target.value)}
+                className="w-full p-3 rounded-lg border border-slate-200 mb-3"
+                placeholder="Ex: Correção de dados técnicos do relatório"
+              />
               <label className="block text-sm font-medium text-slate-700 mb-1">Relatório Final (opcional)</label>
               <textarea value={editReport} onChange={e => setEditReport(e.target.value)} rows={5} className="w-full p-3 rounded-lg border border-slate-200 mb-4" />
               <div className="flex flex-col sm:flex-row gap-3">
@@ -1200,6 +1317,11 @@ export default function ServiceOrders() {
                   // Validar campo obrigatório
                   if (!editComponent.trim()) {
                     toast.error('Componente é obrigatório');
+                    return;
+                  }
+
+                  if (!editReason.trim()) {
+                    toast.error('Motivo da alteração é obrigatório');
                     return;
                   }
                   
@@ -1221,6 +1343,11 @@ export default function ServiceOrders() {
                         },
                         details: {
                           fields: ['final_report', 'tools', 'component'],
+                          previous_component: editingOrder.component,
+                          next_component: editComponent,
+                          previous_tools_count: (editingOrder.tools || []).length,
+                          next_tools_count: editTools.length,
+                          reason: editReason.trim(),
                         },
                       });
 
@@ -1228,6 +1355,7 @@ export default function ServiceOrders() {
                       await fetchOrders();
                       setEditReportModalOpen(false);
                       setEditingOrder(null);
+                      setEditReason('');
                     } else {
                       toast.error('❌ Erro ao atualizar relatório.');
                     }
@@ -1236,6 +1364,95 @@ export default function ServiceOrders() {
                     toast.error('❌ Erro ao atualizar relatório.');
                   }
                 }} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-lg">Salvar</button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {reopenModalOpen && reopeningOrder && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-4 sm:p-6"
+            >
+              <h3 className="text-xl font-bold text-slate-900 mb-2">Reabrir Ordem de Serviço</h3>
+              <p className="text-slate-500 mb-4">Informe o motivo para reabrir a O.S #{reopeningOrder.id.toString().padStart(4, '0')}.</p>
+              <textarea
+                value={reopenReason}
+                onChange={(e) => setReopenReason(e.target.value)}
+                className="w-full p-3 rounded-lg border border-slate-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none"
+                rows={4}
+                placeholder="Ex: Falha reapareceu durante teste final"
+              />
+
+              <div className="flex flex-col sm:flex-row gap-3 mt-6">
+                <button
+                  onClick={() => {
+                    setReopenModalOpen(false);
+                    setReopenReason('');
+                    setReopeningOrder(null);
+                  }}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-3 rounded-xl transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  disabled={isReopeningOrder}
+                  onClick={async () => {
+                    if (!reopeningOrder || !user) return;
+                    if (!reopenReason.trim()) {
+                      toast.error('Informe o motivo da reabertura.');
+                      return;
+                    }
+
+                    try {
+                      setIsReopeningOrder(true);
+                      const result = await updateServiceOrder(reopeningOrder.id, {
+                        status: 'open',
+                        end_time: null,
+                      });
+
+                      if (!result) {
+                        toast.error('Não foi possível reabrir a O.S.');
+                        return;
+                      }
+
+                      await recordAuditAction({
+                        action: 'service_order_updated',
+                        entityId: reopeningOrder.id,
+                        user: {
+                          id: user.id,
+                          name: user.name,
+                          role: user.role,
+                        },
+                        details: {
+                          status_from: 'closed',
+                          status_to: 'open',
+                          reason: reopenReason.trim(),
+                          event: 'service_order_reopened',
+                        },
+                      });
+
+                      toast.success('O.S reaberta com sucesso.');
+                      await fetchOrders();
+                      setReopenModalOpen(false);
+                      setReopenReason('');
+                      setReopeningOrder(null);
+                    } catch (err) {
+                      console.error('Erro ao reabrir O.S:', err);
+                      toast.error('Erro ao reabrir O.S.');
+                    } finally {
+                      setIsReopeningOrder(false);
+                    }
+                  }}
+                  className="flex-1 bg-amber-600 hover:bg-amber-700 disabled:opacity-60 text-white font-medium py-3 rounded-xl transition-colors"
+                >
+                  {isReopeningOrder ? 'Reabrindo...' : 'Reabrir O.S'}
+                </button>
               </div>
             </motion.div>
           </div>

@@ -885,17 +885,41 @@ export async function updateMachine(id: number, updates: Partial<Machine>): Prom
       return null;
     }
 
-    const { data, error } = await supabase
+    const { error: updateError } = await supabase
       .from('machines')
       .update(updates)
-      .eq('id', id)
-      .select()
-      .single();
+      .eq('id', id);
 
-    if (error) throw error;
-    if (data) upsertCachedRow('machines', data as any);
+    if (updateError) throw updateError;
+
+    // Avoid 406/PGRST116 from `.single()` when RLS allows update but blocks row return.
+    const { data: refreshed, error: refreshError } = await supabase
+      .from('machines')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (refreshError && refreshError.code !== 'PGRST116') {
+      throw refreshError;
+    }
+
+    if (refreshed) {
+      upsertCachedRow('machines', refreshed as any);
+      void processOfflineSyncQueue();
+      return normalizeMachine(refreshed);
+    }
+
+    const cached = getCachedRows<any>('machines');
+    const existing = cached.find((m) => Number(m.id) === Number(id));
+    if (existing) {
+      const merged = { ...existing, ...updates };
+      upsertCachedRow('machines', merged as any);
+      void processOfflineSyncQueue();
+      return normalizeMachine(merged);
+    }
+
     void processOfflineSyncQueue();
-    return data ? normalizeMachine(data) : null;
+    return null;
   } catch (err) {
     console.error('Erro ao atualizar máquina:', err);
     return null;

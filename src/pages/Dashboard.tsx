@@ -10,7 +10,9 @@ import NotificationSettings from '../components/NotificationSettings';
 import TutorialCenter, { type TutorialItem } from '../components/TutorialCenter';
 import {
   getDefaultNotificationRules,
+  getOperationalNotificationRules,
   getNotificationRules,
+  saveGlobalNotificationRules,
   saveNotificationRules,
   type NotificationRules,
 } from '../lib/notificationRules';
@@ -63,8 +65,8 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!user) return;
-    setNotificationRules(getNotificationRules(user.id));
-  }, [user]);
+    setNotificationRules(getOperationalNotificationRules(user.id, isAdmin));
+  }, [user, isAdmin]);
 
   const visibleOrders = useMemo(() => {
     if (!user) return [];
@@ -171,6 +173,9 @@ export default function Dashboard() {
 
     setNotificationRules(rules);
     saveNotificationRules(user.id, rules);
+    if (isAdmin) {
+      saveGlobalNotificationRules(rules);
+    }
     setNotificationOpen(false);
     toast.success('Configurações de notificação atualizadas.');
   };

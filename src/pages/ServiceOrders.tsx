@@ -18,6 +18,7 @@ import {
   deletePartTool
 } from '../lib/supabaseApi';
 import { recordAuditAction } from '../lib/audit';
+import { getOperationalNotificationRules } from '../lib/notificationRules';
 
 interface PartTool {
   id: number;
@@ -53,6 +54,41 @@ interface SavedServiceOrdersFilter {
   name: string;
   query: string;
   status: 'all' | 'open' | 'closed';
+}
+
+interface ServiceOrderBreakState {
+  totalMs: number;
+  activeStartMs: number | null;
+  activeEndMs: number | null;
+}
+
+const ORDER_BREAKS_STORAGE_KEY = 'service-order-breaks:v1';
+
+function readOrderBreaks(): Record<number, ServiceOrderBreakState> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(ORDER_BREAKS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, ServiceOrderBreakState>;
+    const normalized: Record<number, ServiceOrderBreakState> = {};
+    Object.entries(parsed || {}).forEach(([key, value]) => {
+      const orderId = Number(key);
+      if (!Number.isFinite(orderId)) return;
+      normalized[orderId] = {
+        totalMs: Math.max(0, Number(value?.totalMs || 0)),
+        activeStartMs: value?.activeStartMs ? Number(value.activeStartMs) : null,
+        activeEndMs: value?.activeEndMs ? Number(value.activeEndMs) : null,
+      };
+    });
+    return normalized;
+  } catch {
+    return {};
+  }
+}
+
+function persistOrderBreaks(breaksByOrder: Record<number, ServiceOrderBreakState>) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(ORDER_BREAKS_STORAGE_KEY, JSON.stringify(breaksByOrder));
 }
 
 export default function ServiceOrders() {
@@ -98,6 +134,8 @@ export default function ServiceOrders() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed'>('all');
   const [savedFilters, setSavedFilters] = useState<SavedServiceOrdersFilter[]>([]);
   const [savedFilterName, setSavedFilterName] = useState('');
+  const [breakMinutesAllowed, setBreakMinutesAllowed] = useState(15);
+  const [orderBreaks, setOrderBreaks] = useState<Record<number, ServiceOrderBreakState>>(() => readOrderBreaks());
   const [newOrder, setNewOrder] = useState({
   machine_id: '',
   maintenance_type: 'corretiva' as 'preventiva' | 'corretiva',
@@ -152,6 +190,19 @@ export default function ServiceOrders() {
     }
   }, [user]);
 
+  useEffect(() => {
+    if (!user) return;
+
+    const refreshBreakRules = () => {
+      const rules = getOperationalNotificationRules(user.id, isAdmin);
+      setBreakMinutesAllowed(rules.remindEveryMinutes);
+    };
+
+    refreshBreakRules();
+    const interval = setInterval(refreshBreakRules, 10000);
+    return () => clearInterval(interval);
+  }, [user?.id, isAdmin]);
+
   // Update timer every second
   useEffect(() => {
     const interval = setInterval(() => {
@@ -170,6 +221,56 @@ export default function ServiceOrders() {
       }
     });
   }, [orders]);
+
+  useEffect(() => {
+    persistOrderBreaks(orderBreaks);
+  }, [orderBreaks]);
+
+  useEffect(() => {
+    const openOrderIds = new Set(orders.filter((order) => order.status === 'open').map((order) => order.id));
+    setOrderBreaks((prev) => {
+      const next: Record<number, ServiceOrderBreakState> = {};
+      Object.entries(prev as Record<string, ServiceOrderBreakState>).forEach(([key, value]) => {
+        const id = Number(key);
+        if (openOrderIds.has(id)) {
+          next[id] = value;
+        }
+      });
+      return next;
+    });
+  }, [orders]);
+
+  useEffect(() => {
+    if (!Object.keys(orderBreaks).length) return;
+
+    let changed = false;
+    const now = Date.now();
+    const completedIds: number[] = [];
+
+    const next: Record<number, ServiceOrderBreakState> = { ...orderBreaks };
+
+    Object.entries(orderBreaks as Record<string, ServiceOrderBreakState>).forEach(([key, state]) => {
+      const orderId = Number(key);
+      if (!state?.activeStartMs || !state?.activeEndMs) return;
+      if (now < state.activeEndMs) return;
+
+      const elapsed = Math.max(0, state.activeEndMs - state.activeStartMs);
+      next[orderId] = {
+        totalMs: Math.max(0, Number(state.totalMs || 0)) + elapsed,
+        activeStartMs: null,
+        activeEndMs: null,
+      };
+      completedIds.push(orderId);
+      changed = true;
+    });
+
+    if (changed) {
+      setOrderBreaks(next);
+      completedIds.forEach((orderId) => {
+        toast.info(`Intervalo da O.S #${String(orderId).padStart(4, '0')} finalizado.`);
+      });
+    }
+  }, [clockMs, orderBreaks]);
 
   const fetchMachines = async () => {
     try {
@@ -449,6 +550,55 @@ export default function ServiceOrders() {
     return Number.isFinite(parsed) ? parsed : Date.now();
   };
 
+  const startOrderBreak = async (order: ServiceOrder) => {
+    if (!user) return;
+
+    const currentBreak = orderBreaks[order.id];
+    if (currentBreak?.activeStartMs && currentBreak?.activeEndMs && Date.now() < currentBreak.activeEndMs) {
+      toast.info('Esta O.S já está em intervalo.');
+      return;
+    }
+
+    const startMs = Date.now();
+    const endMs = startMs + breakMinutesAllowed * 60 * 1000;
+
+    setOrderBreaks((prev) => ({
+      ...prev,
+      [order.id]: {
+        totalMs: prev[order.id]?.totalMs || 0,
+        activeStartMs: startMs,
+        activeEndMs: endMs,
+      },
+    }));
+
+    await recordAuditAction({
+      action: 'service_order_updated',
+      entityId: order.id,
+      user: {
+        id: user.id,
+        name: user.name,
+        role: user.role,
+      },
+      details: {
+        event: 'service_order_break_started',
+        break_minutes: breakMinutesAllowed,
+        status: order.status,
+      },
+    });
+
+    toast.success(`Intervalo de ${breakMinutesAllowed} minuto(s) iniciado.`);
+  };
+
+  const getBreakRemainingLabel = (orderId: number) => {
+    const state = orderBreaks[orderId];
+    if (!state?.activeEndMs || !state?.activeStartMs) return null;
+
+    const remainingMs = Math.max(0, state.activeEndMs - Date.now());
+    const minutes = Math.floor(remainingMs / (1000 * 60));
+    const seconds = Math.floor((remainingMs % (1000 * 60)) / 1000);
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  };
+
   const validateOrderForm = () => {
     if (!newOrder.machine_id || String(newOrder.machine_id).trim() === '') {
       return 'Campo obrigatório: Máquina';
@@ -469,6 +619,12 @@ export default function ServiceOrders() {
     try {
       const startTime = parseTimestampMs(start);
       let diff = 0;
+      const breakState = orderBreaks[orderId];
+      const pausedByBreakMs = Math.max(0, Number(breakState?.totalMs || 0)) + (
+        breakState?.activeStartMs
+          ? Math.max(0, Math.min(clockMs, breakState.activeEndMs || clockMs) - breakState.activeStartMs)
+          : 0
+      );
 
       if (end) {
         const endTime = parseTimestampMs(end);
@@ -485,7 +641,7 @@ export default function ServiceOrders() {
         }
 
         const baseline = cache[orderId];
-        diff = baseline.baseDiffMs + Math.max(0, now - baseline.baseAtMs);
+        diff = Math.max(0, baseline.baseDiffMs + Math.max(0, now - baseline.baseAtMs) - pausedByBreakMs);
       }
 
       const hours = Math.floor(diff / (1000 * 60 * 60));
@@ -761,17 +917,28 @@ export default function ServiceOrders() {
               <div className="flex flex-col gap-2">
                 {order.status === 'open' ? (
                   canFinalizeOrder(order) && (
-                    <button
-                      onClick={() => {
-                        setFinishingOrderId(order.id);
-                        setFinalReport('');
-                        setFinishReason('');
-                        setFinishModalOpen(true);
-                      }}
-                      className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
-                    >
-                      <Square size={16} fill="currentColor" /> Finalizar
-                    </button>
+                    <>
+                      <button
+                        onClick={() => {
+                          setFinishingOrderId(order.id);
+                          setFinalReport('');
+                          setFinishReason('');
+                          setFinishModalOpen(true);
+                        }}
+                        className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+                      >
+                        <Square size={16} fill="currentColor" /> Finalizar
+                      </button>
+                      <button
+                        onClick={() => void startOrderBreak(order)}
+                        disabled={Boolean(getBreakRemainingLabel(order.id))}
+                        className="bg-amber-100 hover:bg-amber-200 disabled:opacity-60 disabled:cursor-not-allowed text-amber-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                      >
+                        {getBreakRemainingLabel(order.id)
+                          ? `Em intervalo (${getBreakRemainingLabel(order.id)})`
+                          : `Iniciar intervalo (${breakMinutesAllowed} min)`}
+                      </button>
+                    </>
                   )
                 ) : (
                   <div className="flex gap-2">

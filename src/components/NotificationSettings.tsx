@@ -120,7 +120,7 @@ export default function NotificationSettings({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Intervalo minimo entre avisos (minutos)</label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Intervalo minimo entre avisos (minutos) e pausa da O.S</label>
                 <input
                   type="number"
                   min={5}
@@ -135,6 +135,9 @@ export default function NotificationSettings({
                   }
                   className="w-full p-2.5 border border-slate-200 rounded-lg outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200"
                 />
+                <p className="text-xs text-slate-500 mt-1">
+                  Este valor tambem define quantos minutos de intervalo o operador pode iniciar durante uma O.S em andamento.
+                </p>
               </div>
             </div>
 

@@ -14,6 +14,8 @@ const DEFAULT_RULES: NotificationRules = {
   remindEveryMinutes: 15,
 };
 
+const GLOBAL_RULES_KEY = 'notification-rules:global';
+
 function normalizeRules(input: Partial<NotificationRules> | null | undefined): NotificationRules {
   return {
     enableOpenAlerts: input?.enableOpenAlerts ?? DEFAULT_RULES.enableOpenAlerts,
@@ -45,4 +47,34 @@ export function getNotificationRules(userId: number): NotificationRules {
 export function saveNotificationRules(userId: number, rules: NotificationRules) {
   if (typeof window === 'undefined') return;
   localStorage.setItem(`notification-rules:${userId}`, JSON.stringify(normalizeRules(rules)));
+}
+
+export function getGlobalNotificationRules(): NotificationRules | null {
+  if (typeof window === 'undefined') return null;
+
+  const raw = localStorage.getItem(GLOBAL_RULES_KEY);
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<NotificationRules>;
+    return normalizeRules(parsed);
+  } catch {
+    return null;
+  }
+}
+
+export function saveGlobalNotificationRules(rules: NotificationRules) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(GLOBAL_RULES_KEY, JSON.stringify(normalizeRules(rules)));
+}
+
+export function getOperationalNotificationRules(userId: number, isAdmin: boolean): NotificationRules {
+  if (isAdmin) {
+    return getNotificationRules(userId);
+  }
+
+  const global = getGlobalNotificationRules();
+  if (global) return global;
+
+  return getNotificationRules(userId);
 }

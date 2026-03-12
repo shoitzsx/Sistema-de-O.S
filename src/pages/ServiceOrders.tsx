@@ -15,10 +15,12 @@ import {
   deleteServiceOrdersByIds,
   verifyUserCredentials,
   createPartTool,
-  deletePartTool
+  deletePartTool,
+  getUsers,
 } from '../lib/supabaseApi';
-import { recordAuditAction } from '../lib/audit';
+import { getLocalAuditLogs, isRemoteAuditEnabled, recordAuditAction } from '../lib/audit';
 import { getOperationalNotificationRules } from '../lib/notificationRules';
+import { supabase } from '../lib/supabase';
 
 interface PartTool {
   id: number;
@@ -32,6 +34,7 @@ interface ServiceOrder {
   machine_name: string;
   operator_name: string;
   operator_id: number;
+  created_at?: string;
   maintenance_type: 'preventiva' | 'corretiva';
   technician_name: string;
   description: string;
@@ -54,6 +57,19 @@ interface SavedServiceOrdersFilter {
   name: string;
   query: string;
   status: 'all' | 'open' | 'closed';
+}
+
+interface AssignableUser {
+  id: number;
+  name: string;
+  role: string;
+}
+
+interface OrderRoutingMeta {
+  assignedUserId: number | null;
+  assignedUserName: string | null;
+  queueStartedAt: string | null;
+  workStartedAt: string | null;
 }
 
 interface ServiceOrderBreakState {
@@ -139,10 +155,13 @@ export default function ServiceOrders() {
   const [savedFilterName, setSavedFilterName] = useState('');
   const [breakMinutesAllowed, setBreakMinutesAllowed] = useState(15);
   const [orderBreaks, setOrderBreaks] = useState<Record<number, ServiceOrderBreakState>>(() => readOrderBreaks());
+  const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
+  const [orderRoutingById, setOrderRoutingById] = useState<Record<number, OrderRoutingMeta>>({});
   const [newOrder, setNewOrder] = useState({
   machine_id: '',
   maintenance_type: 'corretiva' as 'preventiva' | 'corretiva',
   technician_name: '',
+  responsible_user_id: 'na',
   component: '',
   description: '',
   used_parts_tools: [] as number[],
@@ -174,6 +193,7 @@ export default function ServiceOrders() {
     void fetchOrders();
     void fetchMachines();
     void fetchPartsTools();
+    void fetchAssignableUsers();
   }, [user?.id, isAdmin]);
 
   useEffect(() => {
@@ -251,6 +271,114 @@ export default function ServiceOrders() {
   }, [orders]);
 
   useEffect(() => {
+    if (!orders.length) {
+      setOrderRoutingById({});
+      return;
+    }
+
+    const parseIso = (value: unknown) => {
+      if (!value || typeof value !== 'string') return null;
+      const ts = new Date(value).getTime();
+      return Number.isFinite(ts) ? value : null;
+    };
+
+    const loadRouting = async () => {
+      const orderIds = orders.map((order) => order.id);
+      const baseRouting: Record<number, OrderRoutingMeta> = {};
+
+      orders.forEach((order) => {
+        baseRouting[order.id] = {
+          assignedUserId: null,
+          assignedUserName: null,
+          queueStartedAt: order.created_at || order.start_time || null,
+          workStartedAt: null,
+        };
+      });
+
+      const localRows = getLocalAuditLogs()
+        .filter((row) =>
+          (row.action === 'service_order_created' || row.action === 'service_order_updated') &&
+          typeof row.entity_id === 'number' &&
+          orderIds.includes(row.entity_id)
+        )
+        .map((row) => ({
+          entity_id: row.entity_id as number,
+          details: row.details,
+          user_id: row.user_id,
+          user_name: row.user_name,
+          created_at: row.created_at,
+        }));
+
+      let mergedRows = [...localRows];
+
+      if (isRemoteAuditEnabled()) {
+        try {
+          const { data, error } = await supabase
+            .from('audit_logs')
+            .select('action, entity_id, details, user_id, user_name, created_at')
+            .in('action', ['service_order_created', 'service_order_updated'])
+            .in('entity_id', orderIds)
+            .order('created_at', { ascending: true })
+            .limit(3000);
+
+          if (!error) {
+            const remoteRows = (data || []).map((row: any) => ({
+              entity_id: row.entity_id as number,
+              details: typeof row.details === 'object' && row.details ? row.details : {},
+              user_id: Number(row.user_id || 0),
+              user_name: String(row.user_name || ''),
+              created_at: String(row.created_at || ''),
+            }));
+
+            mergedRows = [...remoteRows, ...localRows];
+          }
+        } catch {
+          // fallback local only
+        }
+      }
+
+      mergedRows
+        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+        .forEach((row) => {
+          const orderId = Number(row.entity_id);
+          const current = baseRouting[orderId];
+          if (!current) return;
+
+          const details = row.details as Record<string, unknown>;
+          const assignedUserId = Number(details?.assigned_user_id);
+          const assignedUserName = typeof details?.assigned_user_name === 'string' ? details.assigned_user_name : null;
+          const queueStartedAt = parseIso(details?.queue_started_at);
+          const event = String(details?.event || '').trim();
+
+          if (queueStartedAt) {
+            current.queueStartedAt = queueStartedAt;
+          }
+
+          if (Number.isFinite(assignedUserId) && assignedUserId > 0) {
+            current.assignedUserId = assignedUserId;
+            current.assignedUserName = assignedUserName || current.assignedUserName;
+          }
+
+          if (event === 'service_order_work_started') {
+            current.workStartedAt = parseIso(details?.work_started_at) || row.created_at;
+            const startedByUserId = Number(details?.started_by_user_id || row.user_id);
+            if (Number.isFinite(startedByUserId) && startedByUserId > 0) {
+              current.assignedUserId = startedByUserId;
+              current.assignedUserName =
+                (typeof details?.started_by_user_name === 'string' ? details.started_by_user_name : null) ||
+                row.user_name ||
+                current.assignedUserName;
+            }
+          }
+        });
+
+      setOrderRoutingById(baseRouting);
+    };
+
+    void loadRouting();
+  }, [orders]);
+
+  useEffect(() => {
     if (!Object.keys(orderBreaks).length) return;
 
     let changed = false;
@@ -310,6 +438,23 @@ export default function ServiceOrders() {
       setPartsTools(data);
     } catch (err) {
       console.error('Erro ao buscar peças/ferramentas:', err);
+    }
+  };
+
+  const fetchAssignableUsers = async () => {
+    try {
+      const rows = await getUsers();
+      const filtered = (rows || []).filter((item) => String(item.role || '').toLowerCase() !== 'admin');
+      setAssignableUsers(
+        filtered.map((item) => ({
+          id: item.id,
+          name: item.name,
+          role: item.role,
+        }))
+      );
+    } catch (err) {
+      console.error('Erro ao carregar responsaveis:', err);
+      setAssignableUsers([]);
     }
   };
 
@@ -373,16 +518,24 @@ export default function ServiceOrders() {
 
       setIsSubmittingOrder(true);
 
+      const selectedResponsible =
+        newOrder.responsible_user_id !== 'na'
+          ? assignableUsers.find((item) => item.id === Number(newOrder.responsible_user_id))
+          : null;
+
+      const technicianName = selectedResponsible ? selectedResponsible.name : 'N/A';
+      const queueStartedAt = new Date().toISOString();
+
       const orderData = {
         machine_id: machineId,
         maintenance_type: newOrder.maintenance_type,
-        technician_name: newOrder.technician_name,
+        technician_name: technicianName,
         component: newOrder.component,
         description: newOrder.description,
         machine_name: machine.name,
         operator_id: user.id,
         operator_name: user.name,
-        start_time: new Date().toISOString(),
+        start_time: queueStartedAt,
         end_time: null,
         status: 'open' as const,
         used_parts_tools: newOrder.used_parts_tools,
@@ -404,6 +557,10 @@ export default function ServiceOrders() {
             machine_name: machine.name,
             component: newOrder.component,
             maintenance_type: newOrder.maintenance_type,
+            queue_started_at: queueStartedAt,
+            assigned_user_id: selectedResponsible?.id ?? null,
+            assigned_user_name: selectedResponsible?.name ?? null,
+            event: 'service_order_queued',
           },
         });
 
@@ -414,6 +571,7 @@ export default function ServiceOrders() {
           machine_id: '',
           maintenance_type: 'corretiva',
           technician_name: '',
+          responsible_user_id: 'na',
           component: '',
           description: '',
           used_parts_tools: [],
@@ -768,12 +926,91 @@ export default function ServiceOrders() {
     return Boolean(state?.pausedRemainingMs && state.pausedRemainingMs > 0);
   };
 
+  const hasWorkStarted = (orderId: number) => {
+    const routing = orderRoutingById[orderId];
+    return Boolean(routing?.workStartedAt);
+  };
+
+  const canViewOrder = (order: ServiceOrder) => {
+    if (!user) return false;
+    if (isAdmin) return true;
+
+    const routing = orderRoutingById[order.id];
+    if (!routing) return order.operator_id === user.id;
+
+    if (routing.workStartedAt) {
+      return routing.assignedUserId === user.id;
+    }
+
+    if (routing.assignedUserId) {
+      return routing.assignedUserId === user.id;
+    }
+
+    return true;
+  };
+
+  const startWorkOnOrder = async (order: ServiceOrder) => {
+    if (!user) return;
+    if (order.status !== 'open') return;
+
+    const routing = orderRoutingById[order.id];
+    const alreadyStarted = Boolean(routing?.workStartedAt);
+    if (alreadyStarted) return;
+
+    if (!canViewOrder(order)) {
+      toast.error('Esta O.S está atribuída para outro responsável.');
+      return;
+    }
+
+    const nowIso = new Date().toISOString();
+    const queueStartIso = routing?.queueStartedAt || order.created_at || order.start_time || nowIso;
+    const queueWaitMs = Math.max(0, new Date(nowIso).getTime() - new Date(queueStartIso).getTime());
+
+    try {
+      const updated = await updateServiceOrder(order.id, {
+        start_time: nowIso,
+        technician_name: user.name,
+      });
+
+      if (!updated) {
+        toast.error('Nao foi possivel iniciar o trabalho nesta O.S.');
+        return;
+      }
+
+      await recordAuditAction({
+        action: 'service_order_updated',
+        entityId: order.id,
+        user: {
+          id: user.id,
+          name: user.name,
+          role: user.role,
+        },
+        details: {
+          event: 'service_order_work_started',
+          queue_started_at: queueStartIso,
+          work_started_at: nowIso,
+          queue_wait_ms: queueWaitMs,
+          started_by_user_id: user.id,
+          started_by_user_name: user.name,
+          assigned_user_id: user.id,
+          assigned_user_name: user.name,
+        },
+      });
+
+      await fetchOrders();
+      toast.success('Trabalho iniciado com sucesso.');
+    } catch (err) {
+      console.error('Erro ao iniciar trabalho na O.S:', err);
+      toast.error('Erro ao iniciar o trabalho.');
+    }
+  };
+
   const validateOrderForm = () => {
     if (!newOrder.machine_id || String(newOrder.machine_id).trim() === '') {
       return 'Campo obrigatório: Máquina';
     }
-    if (!newOrder.technician_name || newOrder.technician_name.trim().length < 3) {
-      return 'Informe um responsável com pelo menos 3 caracteres';
+    if (!newOrder.responsible_user_id || String(newOrder.responsible_user_id).trim() === '') {
+      return 'Selecione o responsável (ou N/A)';
     }
     if (!newOrder.component || newOrder.component.trim().length < 2) {
       return 'Informe o componente com pelo menos 2 caracteres';
@@ -824,7 +1061,7 @@ export default function ServiceOrders() {
   };
 
   const filteredOrders = orders.filter((order) => {
-    if (!isAdmin && order.operator_id !== user?.id) {
+    if (!canViewOrder(order)) {
       return false;
     }
 
@@ -1058,8 +1295,8 @@ export default function ServiceOrders() {
           >
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-2">
-                <span className={`px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide ${order.status === 'open' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
-                  {order.status === 'open' ? 'Em Andamento' : 'Finalizada'}
+                <span className={`px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide ${order.status === 'open' ? (hasWorkStarted(order.id) ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700') : 'bg-slate-100 text-slate-600'}`}>
+                  {order.status === 'open' ? (hasWorkStarted(order.id) ? 'Em Andamento' : 'Em Fila') : 'Finalizada'}
                 </span>
                 {order.status === 'open' && isBreakPaused(order.id) && (
                   <span className="px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide bg-amber-100 text-amber-700">
@@ -1092,53 +1329,69 @@ export default function ServiceOrders() {
               <div className="text-right">
                 <div className="flex items-center gap-2 text-slate-500 text-sm justify-end">
                   <Clock size={16} />
-                  Duração
+                  {order.status === 'open' && !hasWorkStarted(order.id) ? 'Fila' : 'Duração'}
                 </div>
                 <div className="text-2xl font-mono font-bold text-slate-800">
-                  {calculateDuration(order.id, order.start_time, order.end_time)}
+                  {order.status === 'open' && !hasWorkStarted(order.id)
+                    ? 'Aguardando'
+                    : calculateDuration(order.id, order.start_time, order.end_time)}
                 </div>
               </div>
 
               <div className="flex flex-col gap-2">
                 {order.status === 'open' ? (
-                  canFinalizeOrder(order) && (
+                  hasWorkStarted(order.id) ? (
+                    canFinalizeOrder(order) && (
+                      <>
+                        <button
+                          onClick={() => {
+                            setFinishingOrderId(order.id);
+                            setFinalReport('');
+                            setFinishReason('');
+                            setFinishModalOpen(true);
+                          }}
+                          className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+                        >
+                          <Square size={16} fill="currentColor" /> Finalizar
+                        </button>
+                        <button
+                          onClick={() => void startOrderBreak(order)}
+                          disabled={isBreakActive(order.id) || isBreakPaused(order.id)}
+                          className="bg-amber-100 hover:bg-amber-200 disabled:opacity-60 disabled:cursor-not-allowed text-amber-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                        >
+                          {isBreakActive(order.id) || isBreakPaused(order.id)
+                            ? `Em intervalo (${getBreakRemainingLabel(order.id)})`
+                            : `Iniciar intervalo (${breakMinutesAllowed} min)`}
+                        </button>
+                        {isBreakActive(order.id) && (
+                          <button
+                            onClick={() => void pauseOrderBreak(order)}
+                            className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                          >
+                            Pausar intervalo
+                          </button>
+                        )}
+                        {isBreakPaused(order.id) && (
+                          <button
+                            onClick={() => void resumeOrderBreak(order)}
+                            className="bg-emerald-100 hover:bg-emerald-200 text-emerald-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                          >
+                            Retomar intervalo ({getBreakRemainingLabel(order.id)})
+                          </button>
+                        )}
+                      </>
+                    )
+                  ) : (
                     <>
                       <button
-                        onClick={() => {
-                          setFinishingOrderId(order.id);
-                          setFinalReport('');
-                          setFinishReason('');
-                          setFinishModalOpen(true);
-                        }}
-                        className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+                        onClick={() => void startWorkOnOrder(order)}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                       >
-                        <Square size={16} fill="currentColor" /> Finalizar
+                        Iniciar trabalho
                       </button>
-                      <button
-                        onClick={() => void startOrderBreak(order)}
-                        disabled={isBreakActive(order.id) || isBreakPaused(order.id)}
-                        className="bg-amber-100 hover:bg-amber-200 disabled:opacity-60 disabled:cursor-not-allowed text-amber-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                      >
-                        {isBreakActive(order.id) || isBreakPaused(order.id)
-                          ? `Em intervalo (${getBreakRemainingLabel(order.id)})`
-                          : `Iniciar intervalo (${breakMinutesAllowed} min)`}
-                      </button>
-                      {isBreakActive(order.id) && (
-                        <button
-                          onClick={() => void pauseOrderBreak(order)}
-                          className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                        >
-                          Pausar intervalo
-                        </button>
-                      )}
-                      {isBreakPaused(order.id) && (
-                        <button
-                          onClick={() => void resumeOrderBreak(order)}
-                          className="bg-emerald-100 hover:bg-emerald-200 text-emerald-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                        >
-                          Retomar intervalo ({getBreakRemainingLabel(order.id)})
-                        </button>
-                      )}
+                      <p className="text-xs text-slate-500 max-w-[220px]">
+                        Ao iniciar, esta O.S sai da fila e fica atribuida a voce.
+                      </p>
                     </>
                   )
                 ) : (
@@ -1371,13 +1624,20 @@ export default function ServiceOrders() {
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Responsável</label>
-                  <input
-                    type="text"
+                  <select
                     required
-                    value={newOrder.technician_name}
-                    onChange={(e) => setNewOrder({ ...newOrder, technician_name: e.target.value })}
-                    className="w-full p-3 rounded-lg border border-slate-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none"
-                  />
+                    value={newOrder.responsible_user_id}
+                    onChange={(e) => setNewOrder({ ...newOrder, responsible_user_id: e.target.value })}
+                    className="w-full p-3 rounded-lg border border-slate-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none bg-white"
+                  >
+                    <option value="na">N/A (disponivel para todos)</option>
+                    {assignableUsers.map((item) => (
+                      <option key={item.id} value={item.id}>{item.name}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Se selecionar um responsavel, a O.S aparece somente para ele. Com N/A, qualquer operador pode receber.
+                  </p>
                 </div>
 
                 <div>
@@ -1450,7 +1710,7 @@ export default function ServiceOrders() {
                     aria-busy={isSubmittingOrder}
                     className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-medium py-3 rounded-xl shadow-lg shadow-orange-500/20 transition-colors flex items-center justify-center gap-2"
                   >
-                    <Play size={18} /> {isSubmittingOrder ? 'Iniciando...' : 'Iniciar Trabalho'}
+                    <Play size={18} /> {isSubmittingOrder ? 'Cadastrando...' : 'Cadastrar O.S'}
                   </button>
                 </div>
               </form>

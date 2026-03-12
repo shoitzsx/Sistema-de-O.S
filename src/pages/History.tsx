@@ -46,6 +46,12 @@ interface BreakSummary {
   breakExceededLimit: boolean | null;
 }
 
+interface QueueSummary {
+  queueWaitMs: number | null;
+  queueStartedAt: string | null;
+  workStartedAt: string | null;
+}
+
 export default function History() {
   const { user } = useAuth();
   const normalizedRole = String(user?.role || '').trim().toLowerCase();
@@ -72,6 +78,7 @@ export default function History() {
   const [deleteReason, setDeleteReason] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [breakSummaryByOrderId, setBreakSummaryByOrderId] = useState<Record<number, BreakSummary>>({});
+  const [queueSummaryByOrderId, setQueueSummaryByOrderId] = useState<Record<number, QueueSummary>>({});
 
   useEffect(() => {
     if (!user) return;
@@ -166,6 +173,98 @@ export default function History() {
     };
 
     void loadBreakSummary();
+  }, [orders, user?.id, isAdmin]);
+
+  useEffect(() => {
+    if (!user || !orders.length) {
+      setQueueSummaryByOrderId({});
+      return;
+    }
+
+    const scopedOrderIds = new Set(
+      (isAdmin ? orders : orders.filter((order) => order.operator_id === user.id)).map((order) => order.id)
+    );
+
+    const toIso = (value: unknown): string | null => {
+      if (typeof value !== 'string' || !value) return null;
+      const timestamp = new Date(value).getTime();
+      if (!Number.isFinite(timestamp)) return null;
+      return new Date(timestamp).toISOString();
+    };
+
+    const toNumber = (value: unknown): number | null => {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+
+    const loadQueueSummary = async () => {
+      const localRows = getLocalAuditLogs()
+        .filter((row) => row.action === 'service_order_updated' && typeof row.entity_id === 'number')
+        .map((row) => ({
+          entity_id: row.entity_id as number,
+          created_at: row.created_at,
+          details: row.details,
+        }));
+
+      let mergedRows = [...localRows];
+
+      if (isRemoteAuditEnabled()) {
+        try {
+          const { data, error } = await supabase
+            .from('audit_logs')
+            .select('entity_id, details, action, created_at')
+            .eq('action', 'service_order_updated')
+            .order('created_at', { ascending: false })
+            .limit(2000);
+
+          if (!error) {
+            const remoteRows = (data || [])
+              .filter((row: any) => typeof row.entity_id === 'number')
+              .map((row: any) => ({
+                entity_id: row.entity_id as number,
+                created_at: String(row.created_at || ''),
+                details: typeof row.details === 'object' && row.details ? row.details : {},
+              }));
+
+            mergedRows = [...remoteRows, ...localRows];
+          }
+        } catch {
+          // Fallback local only.
+        }
+      }
+
+      const nextSummary: Record<number, QueueSummary> = {};
+
+      mergedRows
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .forEach((row) => {
+          if (!scopedOrderIds.has(row.entity_id)) return;
+          if (nextSummary[row.entity_id]) return;
+
+          const details = (row.details || {}) as Record<string, unknown>;
+          const event = String(details.event || '');
+          if (event !== 'service_order_work_started') return;
+
+          const queueStartedAt = toIso(details.queue_started_at);
+          const workStartedAt = toIso(details.work_started_at) || toIso(row.created_at);
+          const queueWaitMsRaw = toNumber(details.queue_wait_ms);
+
+          let queueWaitMs = queueWaitMsRaw;
+          if ((!Number.isFinite(Number(queueWaitMs)) || queueWaitMs === null) && queueStartedAt && workStartedAt) {
+            queueWaitMs = Math.max(0, new Date(workStartedAt).getTime() - new Date(queueStartedAt).getTime());
+          }
+
+          nextSummary[row.entity_id] = {
+            queueWaitMs: queueWaitMs === null ? null : Math.max(0, queueWaitMs),
+            queueStartedAt,
+            workStartedAt,
+          };
+        });
+
+      setQueueSummaryByOrderId(nextSummary);
+    };
+
+    void loadQueueSummary();
   }, [orders, user?.id, isAdmin]);
 
   useEffect(() => {
@@ -320,11 +419,12 @@ export default function History() {
   };
 
   const exportToCSV = () => {
-    const headers = ['ID', 'Máquina', 'Operador', 'Responsável', 'Tipo', 'Componente', 'Início', 'Início ISO', 'Fim', 'Fim ISO', 'Duração', 'Pausa Total', 'Limite de Pausa (min)', 'Ultrapassou Limite', 'Status', 'Relatório'];
+    const headers = ['ID', 'Máquina', 'Operador', 'Responsável', 'Tipo', 'Componente', 'Início', 'Início ISO', 'Fim', 'Fim ISO', 'Duração', 'Tempo em Fila', 'Fila Início ISO', 'Fila Início Trabalho ISO', 'Pausa Total', 'Limite de Pausa (min)', 'Ultrapassou Limite', 'Status', 'Relatório'];
     const csvContent = [
       headers.map(escapeCsvField).join(';'),
       ...filteredOrders.map(order => {
         const summary = breakSummaryByOrderId[order.id];
+        const queueSummary = queueSummaryByOrderId[order.id];
         return [
         `#${order.id.toString().padStart(4, '0')}`,
         order.machine_name,
@@ -337,6 +437,9 @@ export default function History() {
         order.end_time ? formatDate(order.end_time) : '-',
         order.end_time || '-',
         calculateDuration(order.start_time, order.end_time),
+        formatMsDuration(queueSummary?.queueWaitMs ?? null),
+        queueSummary?.queueStartedAt || '-',
+        queueSummary?.workStartedAt || '-',
         formatMsDuration(summary?.breakTotalMs ?? null),
         summary?.breakLimitMinutes ?? '-',
         summary?.breakExceededLimit === null || summary?.breakExceededLimit === undefined
@@ -850,7 +953,7 @@ export default function History() {
                 )}
 
                 {/* Datas e Duração */}
-                <div className="grid grid-cols-2 md:grid-cols-6 gap-4 text-sm">
+                <div className="grid grid-cols-2 md:grid-cols-7 gap-4 text-sm">
                   <div className="bg-slate-50 p-3 rounded-lg">
                     <p className="text-slate-500 text-xs font-medium mb-1">Início</p>
                     <p className="text-slate-800 font-medium">{formatDate(order.start_time)}</p>
@@ -865,6 +968,12 @@ export default function History() {
                       <p className="text-slate-500 text-xs font-medium mb-1">Duração</p>
                       <p className="text-slate-800 font-mono font-bold">{calculateDuration(order.start_time, order.end_time)}</p>
                     </div>
+                  </div>
+                  <div className="bg-slate-50 p-3 rounded-lg">
+                    <p className="text-slate-500 text-xs font-medium mb-1">Tempo em fila</p>
+                    <p className="text-slate-800 font-mono font-bold">
+                      {formatMsDuration(queueSummaryByOrderId[order.id]?.queueWaitMs ?? null)}
+                    </p>
                   </div>
                   <div className="bg-slate-50 p-3 rounded-lg">
                     <p className="text-slate-500 text-xs font-medium mb-1">Pausa total</p>

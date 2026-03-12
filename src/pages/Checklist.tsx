@@ -63,6 +63,7 @@ interface TemplateCategory {
 interface TvServiceOrderSummary {
   id: number;
   status: 'open' | 'closed' | string;
+  created_at: string | null;
   start_time: string;
   end_time: string | null;
   operator_id: number;
@@ -254,6 +255,7 @@ export default function Checklist() {
           (ordersData || []).map((order) => ({
             id: order.id,
             status: String(order.status || 'open'),
+            created_at: order.created_at ? String(order.created_at) : null,
             start_time: String(order.start_time || new Date().toISOString()),
             end_time: order.end_time ? String(order.end_time) : null,
             operator_id: Number(order.operator_id || 0),
@@ -480,6 +482,27 @@ export default function Checklist() {
     if (order.status !== 'closed' || !order.end_time) return false;
     return toSafeDate(order.end_time).getTime() >= today.getTime();
   }).length;
+
+  const tvQueueWaitAveragesMs = tvVisibleOrders
+    .map((order) => {
+      const createdAt = order.created_at ? new Date(order.created_at).getTime() : NaN;
+      const startedAt = new Date(order.start_time).getTime();
+      if (!Number.isFinite(createdAt) || !Number.isFinite(startedAt)) return null;
+      if (startedAt <= createdAt) return null;
+      return startedAt - createdAt;
+    })
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0);
+
+  const tvAverageQueueWaitMs = tvQueueWaitAveragesMs.length
+    ? Math.round(tvQueueWaitAveragesMs.reduce((sum, value) => sum + value, 0) / tvQueueWaitAveragesMs.length)
+    : null;
+
+  const formatTvQueueDuration = (ms: number | null) => {
+    if (ms === null || !Number.isFinite(ms)) return '--';
+    const minutes = Math.floor(ms / (1000 * 60));
+    const seconds = Math.floor((ms % (1000 * 60)) / 1000);
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  };
 
   const tvVisibleChecklists = isAdmin
     ? tvChecklists
@@ -983,7 +1006,7 @@ export default function Checklist() {
                     <h3 className="text-lg md:text-xl font-semibold mb-1">Painel de Controle</h3>
                     <p className="text-slate-600 text-sm mb-3">Indicadores de O.S</p>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
                       <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
                         <p className="text-xs text-slate-600">Abertas</p>
                         <p className="text-2xl font-bold text-emerald-700">{tvOpenOrders}</p>
@@ -995,6 +1018,10 @@ export default function Checklist() {
                       <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
                         <p className="text-xs text-slate-600">Finalizadas hoje</p>
                         <p className="text-2xl font-bold text-emerald-700">{tvClosedToday}</p>
+                      </div>
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                        <p className="text-xs text-slate-600">Media de fila</p>
+                        <p className="text-2xl font-bold text-emerald-700">{formatTvQueueDuration(tvAverageQueueWaitMs)}</p>
                       </div>
                     </div>
                   </div>

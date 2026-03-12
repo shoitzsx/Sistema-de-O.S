@@ -1363,12 +1363,12 @@ export default function ServiceOrders() {
                 rows={5}
                 placeholder="Ex: Substituído motor, realizado teste, tudo ok..."
               />
-              <label className="block text-sm font-medium text-slate-700 mt-4 mb-1">Motivo da alteração de status *</label>
+              <label className="block text-sm font-medium text-slate-700 mt-4 mb-1">Status/motivo da resolução (opcional)</label>
               <input
                 value={finishReason}
                 onChange={(e) => setFinishReason(e.target.value)}
                 className="w-full p-3 rounded-lg border border-slate-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none"
-                placeholder="Ex: Serviço concluído após validação"
+                placeholder="Ex: Problema resolvido, aguardando teste final"
               />
               <div className="flex flex-col sm:flex-row gap-3 mt-6">
                 <button
@@ -1381,10 +1381,15 @@ export default function ServiceOrders() {
                   onClick={async () => {
                     if (!finishingOrderId) return;
                     if (!user) return;
-                    if (!finishReason.trim()) {
-                      toast.error('Informe o motivo da alteração de status.');
-                      return;
+
+                    const resolutionText = finishReason.trim();
+                    if (!resolutionText) {
+                      const confirmedWithoutResolution = window.confirm(
+                        'Deseja finalizar esta O.S sem informar se foi resolvido?'
+                      );
+                      if (!confirmedWithoutResolution) return;
                     }
+
                     try {
                       const result = await closeServiceOrder(
                         finishingOrderId,
@@ -1403,7 +1408,8 @@ export default function ServiceOrders() {
                           details: {
                             status_from: 'open',
                             status_to: 'closed',
-                            reason: finishReason.trim(),
+                            reason: resolutionText || null,
+                            closed_without_resolution_note: !resolutionText,
                             has_final_report: Boolean(finalReport?.trim()),
                           },
                         });
@@ -1578,9 +1584,19 @@ export default function ServiceOrders() {
 
                     try {
                       setIsReopeningOrder(true);
+
+                      const reopenAt = new Date();
+                      const previousStartMs = parseTimestampMs(reopeningOrder.start_time);
+                      const previousEndMs = reopeningOrder.end_time
+                        ? parseTimestampMs(reopeningOrder.end_time)
+                        : reopenAt.getTime();
+                      const elapsedBeforeReopenMs = Math.max(0, previousEndMs - previousStartMs);
+                      const adjustedStartIso = new Date(reopenAt.getTime() - elapsedBeforeReopenMs).toISOString();
+
                       const result = await updateServiceOrder(reopeningOrder.id, {
                         status: 'open',
                         end_time: null,
+                        start_time: adjustedStartIso,
                       });
 
                       if (!result) {
@@ -1600,6 +1616,7 @@ export default function ServiceOrders() {
                           status_from: 'closed',
                           status_to: 'open',
                           reason: reopenReason.trim(),
+                          elapsed_before_reopen_seconds: Math.round(elapsedBeforeReopenMs / 1000),
                           event: 'service_order_reopened',
                         },
                       });

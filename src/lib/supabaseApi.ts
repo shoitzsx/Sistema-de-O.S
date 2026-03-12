@@ -516,6 +516,7 @@ export async function updateServiceOrder(id: number, updates: Partial<ServiceOrd
     if (updates.component !== undefined) updateData.component = updates.component;
     if (updates.status !== undefined) updateData.status = updates.status;
     if (updates.end_time !== undefined) updateData.end_time = updates.end_time;
+    if (updates.start_time !== undefined) updateData.start_time = updates.start_time;
 
     if (!isBrowserOnline()) {
       queueUpdate('service_orders', 'service_orders', id, updateData);

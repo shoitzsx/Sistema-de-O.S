@@ -27,6 +27,79 @@ const actionLabels: Record<string, string> = {
   service_order_deleted: 'O.S excluida',
 };
 
+const maintenanceTypeLabels: Record<string, string> = {
+  preventiva: 'Preventiva',
+  corretiva: 'Corretiva',
+};
+
+const fieldLabels: Record<string, string> = {
+  final_report: 'relatorio final',
+  tools: 'ferramentas',
+  component: 'componente',
+};
+
+const entityTypeLabels: Record<string, string> = {
+  service_orders: 'Ordem de servico',
+};
+
+const asText = (value: unknown): string => {
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return '';
+};
+
+const formatAuditDetails = (row: AuditLogRow): string => {
+  const details = row.details || {};
+
+  if (row.action === 'service_order_created') {
+    const machineName = asText(details.machine_name);
+    const component = asText(details.component);
+    const maintenanceType = maintenanceTypeLabels[asText(details.maintenance_type)] || '';
+    const parts = [
+      machineName ? `Maquina: ${machineName}` : '',
+      component ? `Componente: ${component}` : '',
+      maintenanceType ? `Tipo: ${maintenanceType}` : '',
+    ].filter(Boolean);
+
+    return parts.length > 0 ? parts.join(' | ') : 'Nova O.S registrada.';
+  }
+
+  if (row.action === 'service_order_updated') {
+    const fields = Array.isArray(details.fields) ? details.fields : [];
+    const normalized = fields
+      .map((field) => fieldLabels[asText(field)] || asText(field))
+      .filter(Boolean);
+
+    return normalized.length > 0
+      ? `Campos atualizados: ${normalized.join(', ')}`
+      : 'Dados da O.S atualizados.';
+  }
+
+  if (row.action === 'service_order_closed') {
+    const closedVia = asText(details.closed_via);
+    const hasFinalReport = Boolean(details.has_final_report);
+    const viaText = closedVia === 'quick-action' ? 'Finalizada por acao rapida.' : 'O.S finalizada.';
+
+    return hasFinalReport
+      ? `${viaText} Relatorio final informado.`
+      : `${viaText} Sem relatorio final.`;
+  }
+
+  if (row.action === 'service_order_deleted') {
+    const mode = asText(details.mode);
+    const selectedIds = Array.isArray(details.selected_ids) ? details.selected_ids : [];
+    const reason = asText(details.reason);
+
+    const modeText = mode === 'all'
+      ? 'Exclusao de todas as O.S.'
+      : `Exclusao seletiva (${selectedIds.length} O.S).`;
+
+    return reason ? `${modeText} Motivo: ${reason}` : modeText;
+  }
+
+  return 'Acao registrada.';
+};
+
 export default function AuditLogs() {
   const { user } = useAuth();
   const [rows, setRows] = useState<AuditLogRow[]>([]);
@@ -117,11 +190,11 @@ export default function AuditLogs() {
       if (!query.trim()) return true;
 
       const q = query.toLowerCase();
-      const detailText = JSON.stringify(row.details || {}).toLowerCase();
+      const detailText = formatAuditDetails(row).toLowerCase();
       return (
         String(row.entity_id || '').includes(q) ||
         row.user_name.toLowerCase().includes(q) ||
-        row.action.toLowerCase().includes(q) ||
+        (actionLabels[row.action] || row.action).toLowerCase().includes(q) ||
         detailText.includes(q)
       );
     });
@@ -145,9 +218,9 @@ export default function AuditLogs() {
       actionLabels[row.action] || row.action,
       row.user_name,
       row.user_role,
-      row.entity_type,
+      entityTypeLabels[row.entity_type] || row.entity_type,
       row.entity_id ?? '-',
-      JSON.stringify(row.details || {}),
+      formatAuditDetails(row),
       row.sync_status || 'synced',
     ]);
 
@@ -301,7 +374,7 @@ export default function AuditLogs() {
                     <div className="text-xs text-slate-500">{row.user_role}</div>
                   </td>
                   <td className="px-4 py-3 text-sm text-slate-700">{row.entity_id ? `#${String(row.entity_id).padStart(4, '0')}` : '-'}</td>
-                  <td className="px-4 py-3 text-xs text-slate-600 font-mono">{JSON.stringify(row.details || {})}</td>
+                  <td className="px-4 py-3 text-xs text-slate-600 leading-relaxed">{formatAuditDetails(row)}</td>
                   <td className="px-4 py-3 text-xs">
                     <span className={`px-2 py-1 rounded-full ${row.sync_status === 'local-only' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
                       {row.sync_status === 'local-only' ? 'local' : 'sincronizado'}

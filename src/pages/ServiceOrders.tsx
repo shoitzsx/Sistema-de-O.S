@@ -875,7 +875,7 @@ export default function ServiceOrders() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-4 sm:p-6 max-h-[calc(100dvh-2rem)] overflow-y-auto"
+              className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-4 sm:p-6 max-h-[calc(100dvh-2rem)] overflow-y-auto ui-scrollbar"
             >
               <h3 className="text-xl font-bold text-slate-900 mb-6">Abrir Ordem de Serviço</h3>
 
@@ -893,38 +893,6 @@ export default function ServiceOrders() {
                       <option key={machine.id} value={machine.id}>{machine.name}</option>
                     ))}
                   </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Peças/Ferramentas Utilizadas</label>
-                  <div className="space-y-2 max-h-48 overflow-y-auto border border-slate-200 rounded-lg p-3">
-                    {partsTools.map(item => (
-                      <label key={item.id} className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg">
-                        <input
-                          type="checkbox"
-                          value={item.id}
-                          checked={newOrder.used_parts_tools.includes(item.id)}
-                          onChange={(e) => {
-                            const id = item.id;
-                            setNewOrder(prev => ({
-                              ...prev,
-                              used_parts_tools: e.target.checked
-                                ? [...prev.used_parts_tools, id]
-                                : prev.used_parts_tools.filter(i => i !== id)
-                            }));
-                          }}
-                          className="rounded border-slate-300 text-orange-600 focus:ring-orange-500"
-                        />
-                        <div className="flex-1">
-                          <span className="font-medium text-slate-700">{item.name}</span>
-                          {item.description && <span className="text-xs text-slate-500 ml-2">({item.description})</span>}
-                          <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${item.category === 'tool' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
-                            {item.category === 'tool' ? 'Ferramenta' : 'Peça'}
-                          </span>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
                 </div>
 
                 <div>
@@ -976,31 +944,32 @@ export default function ServiceOrders() {
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Ferramentas Utilizadas</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={newOrder.toolsInput}
-                      onChange={(e) => setNewOrder({ ...newOrder, toolsInput: e.target.value })}
-                      className="flex-1 p-3 rounded-lg border border-slate-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none"
-                      placeholder="Ex: Chave de fenda"
-                      onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addTool())}
-                    />
-                    <button
-                      type="button"
-                      onClick={addTool}
-                      className="bg-orange-100 hover:bg-orange-200 text-orange-700 px-4 rounded-lg"
-                    >
-                      Adicionar
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {newOrder.tools.map((tool, index) => (
-                      <span key={index} className="bg-slate-100 text-slate-700 px-3 py-1 rounded-full text-sm flex items-center gap-1">
-                        {tool}
-                        <button type="button" onClick={() => removeTool(index)} className="text-slate-500 hover:text-red-500">
-                          <X size={14} />
-                        </button>
-                      </span>
+                  <div className="space-y-2 max-h-48 overflow-y-auto border border-slate-200 rounded-lg p-3 ui-scrollbar">
+                    {partsTools.map(item => (
+                      <label key={item.id} className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg">
+                        <input
+                          type="checkbox"
+                          value={item.id}
+                          checked={newOrder.used_parts_tools.includes(item.id)}
+                          onChange={(e) => {
+                            const id = item.id;
+                            setNewOrder(prev => ({
+                              ...prev,
+                              used_parts_tools: e.target.checked
+                                ? [...prev.used_parts_tools, id]
+                                : prev.used_parts_tools.filter(i => i !== id)
+                            }));
+                          }}
+                          className="rounded border-slate-300 text-orange-600 focus:ring-orange-500"
+                        />
+                        <div className="flex-1">
+                          <span className="font-medium text-slate-700">{item.name}</span>
+                          {item.description && <span className="text-xs text-slate-500 ml-2">({item.description})</span>}
+                          <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${item.category === 'tool' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                            {item.category === 'tool' ? 'Ferramenta' : 'Peça'}
+                          </span>
+                        </div>
+                      </label>
                     ))}
                   </div>
                 </div>

@@ -281,6 +281,26 @@ export default function Checklist() {
   }, [isTvMode, user?.id, isAdmin]);
 
   useEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+
+    if (isTvMode) {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    }
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    };
+  }, [isTvMode]);
+
+  useEffect(() => {
     if (!user || isAdmin) return;
 
     const todayIso = new Date().toISOString().slice(0, 10);
@@ -812,99 +832,121 @@ export default function Checklist() {
               </div>
 
               <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 flex-1 min-h-0">
-                <div className="xl:col-span-8 bg-white border border-emerald-200 rounded-2xl p-4 md:p-5 flex flex-col min-h-0 shadow-sm">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg md:text-xl font-semibold">Calendario de Agendamentos</h3>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))}
-                        className="px-3 py-2 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800"
-                      >
-                        &larr;
-                      </button>
-                      <div className="text-sm md:text-base font-semibold min-w-[160px] text-center capitalize">
-                        {calendarDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+                <div className="xl:col-span-8 flex flex-col gap-4 min-h-0">
+                  <div className="bg-white border border-emerald-200 rounded-2xl p-4 md:p-5 flex flex-col min-h-0 shadow-sm">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg md:text-xl font-semibold">Calendario de Agendamentos</h3>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))}
+                          className="px-3 py-2 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800"
+                        >
+                          &larr;
+                        </button>
+                        <div className="text-sm md:text-base font-semibold min-w-[160px] text-center capitalize">
+                          {calendarDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+                        </div>
+                        <button
+                          onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))}
+                          className="px-3 py-2 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800"
+                        >
+                          &rarr;
+                        </button>
                       </div>
-                      <button
-                        onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))}
-                        className="px-3 py-2 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800"
-                      >
-                        &rarr;
-                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-7 gap-2 text-center text-xs md:text-sm font-semibold text-emerald-800 mb-2">
+                      <div>Dom</div><div>Seg</div><div>Ter</div><div>Qua</div><div>Qui</div><div>Sex</div><div>Sab</div>
+                    </div>
+
+                    <div className="grid grid-cols-7 gap-2">
+                      {Array.from({ length: firstWeekday }).map((_, idx) => (
+                        <div key={`tv-empty-${idx}`} className="h-20 md:h-24 rounded-lg bg-emerald-50 border border-emerald-100" />
+                      ))}
+
+                      {Array.from({ length: daysInMonth }).map((_, idx) => {
+                        const day = idx + 1;
+                        const dayIso = `${calendarDate.getFullYear()}-${String(calendarDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                        const count = scheduleCountByDay[dayIso] || 0;
+                        const isSelected = selectedCalendarDay === dayIso;
+                        const isToday = dayIso === new Date().toISOString().slice(0, 10);
+
+                        return (
+                          <button
+                            key={`tv-${dayIso}`}
+                            onClick={() => setSelectedCalendarDay((prev) => (prev === dayIso ? null : dayIso))}
+                            className={clsx(
+                              'h-20 md:h-24 rounded-lg border p-2 text-left transition-colors',
+                              isSelected
+                                ? 'border-emerald-700 bg-emerald-700 text-white shadow-sm'
+                                : 'border-emerald-200 bg-emerald-50 hover:bg-emerald-100'
+                            )}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span
+                                className={clsx(
+                                  'text-sm md:text-base font-semibold',
+                                  isSelected ? 'text-white' : isToday ? 'text-emerald-700' : 'text-slate-700'
+                                )}
+                              >
+                                {day}
+                              </span>
+                              {count > 0 && (
+                                <span
+                                  className={clsx(
+                                    'text-xs px-2 py-0.5 rounded-full font-semibold',
+                                    isSelected ? 'bg-white text-emerald-700' : 'bg-emerald-600 text-white'
+                                  )}
+                                >
+                                  {count}
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="mt-4 border-t border-emerald-100 pt-3 overflow-auto min-h-0">
+                      {selectedCalendarDay && (
+                        <div className="text-sm text-slate-700 mb-2 font-semibold">
+                          {`Agendamentos do dia ${new Date(`${selectedCalendarDay}T00:00:00`).toLocaleDateString('pt-BR')}`}
+                        </div>
+                      )}
+                      {selectedCalendarDay && selectedDaySchedules.length === 0 && (
+                        <div className="text-sm text-slate-500">Sem agendamentos neste dia.</div>
+                      )}
+                      {selectedDaySchedules.length > 0 && (
+                        <div className="space-y-2">
+                          {selectedDaySchedules.map((item) => (
+                            <div key={`tv-day-${String(item.id)}`} className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 text-sm">
+                              <div className="font-semibold text-slate-800">{item.machine_name} | {item.operator_name}</div>
+                              {item.notes && <div className="text-slate-600">Obs: {item.notes}</div>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-7 gap-2 text-center text-xs md:text-sm font-semibold text-emerald-800 mb-2">
-                    <div>Dom</div><div>Seg</div><div>Ter</div><div>Qua</div><div>Qui</div><div>Sex</div><div>Sab</div>
-                  </div>
+                  <div className="bg-white border border-emerald-200 rounded-2xl p-4 md:p-5 shadow-sm">
+                    <h3 className="text-lg md:text-xl font-semibold mb-1">Painel de Controle</h3>
+                    <p className="text-slate-600 text-sm mb-3">Indicadores de O.S</p>
 
-                  <div className="grid grid-cols-7 gap-2">
-                    {Array.from({ length: firstWeekday }).map((_, idx) => (
-                      <div key={`tv-empty-${idx}`} className="h-20 md:h-24 rounded-lg bg-emerald-50 border border-emerald-100" />
-                    ))}
-
-                    {Array.from({ length: daysInMonth }).map((_, idx) => {
-                      const day = idx + 1;
-                      const dayIso = `${calendarDate.getFullYear()}-${String(calendarDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                      const count = scheduleCountByDay[dayIso] || 0;
-                      const isSelected = selectedCalendarDay === dayIso;
-                      const isToday = dayIso === new Date().toISOString().slice(0, 10);
-
-                      return (
-                        <button
-                          key={`tv-${dayIso}`}
-                          onClick={() => setSelectedCalendarDay((prev) => (prev === dayIso ? null : dayIso))}
-                          className={clsx(
-                            'h-20 md:h-24 rounded-lg border p-2 text-left transition-colors',
-                            isSelected
-                              ? 'border-emerald-700 bg-emerald-700 text-white shadow-sm'
-                              : 'border-emerald-200 bg-emerald-50 hover:bg-emerald-100'
-                          )}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span
-                              className={clsx(
-                                'text-sm md:text-base font-semibold',
-                                isSelected ? 'text-white' : isToday ? 'text-emerald-700' : 'text-slate-700'
-                              )}
-                            >
-                              {day}
-                            </span>
-                            {count > 0 && (
-                              <span
-                                className={clsx(
-                                  'text-xs px-2 py-0.5 rounded-full font-semibold',
-                                  isSelected ? 'bg-white text-emerald-700' : 'bg-emerald-600 text-white'
-                                )}
-                              >
-                                {count}
-                              </span>
-                            )}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <div className="mt-4 border-t border-emerald-100 pt-3 overflow-auto min-h-0">
-                    {selectedCalendarDay && (
-                      <div className="text-sm text-slate-700 mb-2 font-semibold">
-                        {`Agendamentos do dia ${new Date(`${selectedCalendarDay}T00:00:00`).toLocaleDateString('pt-BR')}`}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                        <p className="text-xs text-slate-600">Abertas</p>
+                        <p className="text-2xl font-bold text-emerald-700">{tvOpenOrders}</p>
                       </div>
-                    )}
-                    {selectedCalendarDay && selectedDaySchedules.length === 0 && (
-                      <div className="text-sm text-slate-500">Sem agendamentos neste dia.</div>
-                    )}
-                    {selectedDaySchedules.length > 0 && (
-                      <div className="space-y-2">
-                        {selectedDaySchedules.map((item) => (
-                          <div key={`tv-day-${String(item.id)}`} className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 text-sm">
-                            <div className="font-semibold text-slate-800">{item.machine_name} | {item.operator_name}</div>
-                            {item.notes && <div className="text-slate-600">Obs: {item.notes}</div>}
-                          </div>
-                        ))}
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                        <p className="text-xs text-slate-600">Em atraso</p>
+                        <p className="text-2xl font-bold text-amber-600">{tvOverdueOrders}</p>
                       </div>
-                    )}
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                        <p className="text-xs text-slate-600">Finalizadas hoje</p>
+                        <p className="text-2xl font-bold text-emerald-700">{tvClosedToday}</p>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -934,38 +976,6 @@ export default function Checklist() {
                           {item.notes && <div className="text-xs text-slate-500 mt-1">Obs: {item.notes}</div>}
                         </div>
                       ))}
-                    </div>
-                  </div>
-
-                  <div className="bg-white border border-emerald-200 rounded-2xl p-4 md:p-5 shadow-sm">
-                    <h3 className="text-lg md:text-xl font-semibold mb-1">Painel de Controle</h3>
-                    <p className="text-slate-600 text-sm mb-3">Indicadores de O.S e Checklist</p>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-                        <p className="text-xs text-slate-600">O.S abertas</p>
-                        <p className="text-2xl font-bold text-emerald-700">{tvOpenOrders}</p>
-                      </div>
-                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-                        <p className="text-xs text-slate-600">O.S em atraso</p>
-                        <p className="text-2xl font-bold text-amber-600">{tvOverdueOrders}</p>
-                      </div>
-                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-                        <p className="text-xs text-slate-600">O.S finalizadas hoje</p>
-                        <p className="text-2xl font-bold text-emerald-700">{tvClosedToday}</p>
-                      </div>
-                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-                        <p className="text-xs text-slate-600">Checklist pendentes</p>
-                        <p className="text-2xl font-bold text-amber-600">{tvPendingChecklists}</p>
-                      </div>
-                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-                        <p className="text-xs text-slate-600">Checklist concluidos hoje</p>
-                        <p className="text-2xl font-bold text-emerald-700">{tvCompletedToday}</p>
-                      </div>
-                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-                        <p className="text-xs text-slate-600">Taxa de conclusao</p>
-                        <p className="text-2xl font-bold text-emerald-700">{tvCompletionRate.toFixed(0)}%</p>
-                      </div>
                     </div>
                   </div>
                 </div>

@@ -4,7 +4,7 @@ import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
-import { CheckCircle, XCircle, MinusCircle, ChevronRight, Save, Calendar, ChevronDown, ChevronUp, AlertCircle, Plus, Trash2, Settings } from 'lucide-react';
+import { CheckCircle, XCircle, MinusCircle, ChevronRight, Save, Calendar, ChevronDown, ChevronUp, AlertCircle, Plus, Trash2, Settings, Monitor, Minimize2 } from 'lucide-react';
 import clsx from 'clsx';
 import {
   getMachines,
@@ -92,6 +92,7 @@ export default function Checklist() {
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [selectedCalendarDay, setSelectedCalendarDay] = useState<string | null>(null);
   const [isCreatingSchedule, setIsCreatingSchedule] = useState(false);
+  const [isTvMode, setIsTvMode] = useState(false);
   const [scheduleForm, setScheduleForm] = useState({
     operator_id: '',
     machine_id: '',
@@ -191,6 +192,29 @@ export default function Checklist() {
   }, [user?.id, isAdmin]);
 
   useEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement && isTvMode) {
+        setIsTvMode(false);
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, [isTvMode]);
+
+  useEffect(() => {
+    if (!isTvMode || !user) return;
+
+    const interval = setInterval(() => {
+      void loadSchedules();
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [isTvMode, user?.id, isAdmin]);
+
+  useEffect(() => {
     if (!user || isAdmin) return;
 
     const todayIso = new Date().toISOString().slice(0, 10);
@@ -279,6 +303,32 @@ export default function Checklist() {
     }
   };
 
+  const openTvMode = async () => {
+    setIsTvMode(true);
+
+    if (typeof document === 'undefined') return;
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+      }
+    } catch {
+      // Fullscreen may be blocked by browser policy; keep fixed TV overlay mode.
+    }
+  };
+
+  const closeTvMode = async () => {
+    setIsTvMode(false);
+
+    if (typeof document === 'undefined') return;
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      }
+    } catch {
+      // Ignore fullscreen exit errors.
+    }
+  };
+
   const visibleSchedules = schedules
     .filter((item) => {
       if (selectedCalendarDay && item.scheduled_date !== selectedCalendarDay) return false;
@@ -296,6 +346,45 @@ export default function Checklist() {
     acc[item.scheduled_date] = (acc[item.scheduled_date] || 0) + 1;
     return acc;
   }, {});
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const plusThirty = new Date(today);
+  plusThirty.setDate(plusThirty.getDate() + 30);
+
+  const upcomingThirtyDaysSchedules = schedules
+    .filter((item) => {
+      if (!isAdmin && user && item.operator_id !== user.id) return false;
+      if (item.status === 'cancelled') return false;
+
+      const timestamp = new Date(`${item.scheduled_date}T00:00:00`).getTime();
+      if (!Number.isFinite(timestamp)) return false;
+
+      return timestamp >= today.getTime() && timestamp <= plusThirty.getTime();
+    })
+    .sort((a, b) => new Date(a.scheduled_date).getTime() - new Date(b.scheduled_date).getTime());
+
+  const selectedDaySchedules = selectedCalendarDay
+    ? schedules
+        .filter((item) => {
+          if (item.scheduled_date !== selectedCalendarDay) return false;
+          if (!isAdmin && user && item.operator_id !== user.id) return false;
+          return true;
+        })
+        .sort((a, b) => new Date(a.scheduled_date).getTime() - new Date(b.scheduled_date).getTime())
+    : [];
+
+  const getStatusLabel = (status: ChecklistSchedule['status']) => {
+    if (status === 'completed') return 'Concluido';
+    if (status === 'cancelled') return 'Cancelado';
+    return 'Pendente';
+  };
+
+  const getStatusClass = (status: ChecklistSchedule['status']) => {
+    if (status === 'completed') return 'bg-emerald-100 text-emerald-700';
+    if (status === 'cancelled') return 'bg-red-100 text-red-700';
+    return 'bg-blue-100 text-blue-700';
+  };
 
   useEffect(() => {
     if (editingModel) {
@@ -604,6 +693,138 @@ export default function Checklist() {
     return (
       <>
         <NokConfirmDialog />
+        {isTvMode && (
+          <div className="fixed inset-0 z-[90] bg-slate-900 text-white p-4 md:p-6 overflow-hidden">
+            <div className="h-full flex flex-col">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-700 pb-4 mb-4">
+                <div>
+                  <h2 className="text-2xl md:text-3xl font-bold">Checklist Mensal - Modo TV</h2>
+                  <p className="text-slate-300 text-sm md:text-base">Visao de agendamentos para comunicacao com a equipe</p>
+                </div>
+                <button
+                  onClick={closeTvMode}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white"
+                >
+                  <Minimize2 size={16} /> Sair do modo TV
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 flex-1 min-h-0">
+                <div className="xl:col-span-8 bg-slate-800 border border-slate-700 rounded-2xl p-4 md:p-5 flex flex-col min-h-0">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg md:text-xl font-semibold">Calendario de Agendamentos</h3>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))}
+                        className="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600"
+                      >
+                        &larr;
+                      </button>
+                      <div className="text-sm md:text-base font-semibold min-w-[160px] text-center capitalize">
+                        {calendarDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+                      </div>
+                      <button
+                        onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))}
+                        className="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600"
+                      >
+                        &rarr;
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-2 text-center text-xs md:text-sm font-semibold text-slate-300 mb-2">
+                    <div>Dom</div><div>Seg</div><div>Ter</div><div>Qua</div><div>Qui</div><div>Sex</div><div>Sab</div>
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-2">
+                    {Array.from({ length: firstWeekday }).map((_, idx) => (
+                      <div key={`tv-empty-${idx}`} className="h-20 md:h-24 rounded-lg bg-slate-700/40 border border-slate-700" />
+                    ))}
+
+                    {Array.from({ length: daysInMonth }).map((_, idx) => {
+                      const day = idx + 1;
+                      const dayIso = `${calendarDate.getFullYear()}-${String(calendarDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                      const count = scheduleCountByDay[dayIso] || 0;
+                      const isSelected = selectedCalendarDay === dayIso;
+                      const isToday = dayIso === new Date().toISOString().slice(0, 10);
+
+                      return (
+                        <button
+                          key={`tv-${dayIso}`}
+                          onClick={() => setSelectedCalendarDay((prev) => (prev === dayIso ? null : dayIso))}
+                          className={clsx(
+                            'h-20 md:h-24 rounded-lg border p-2 text-left transition-colors',
+                            isSelected ? 'border-cyan-400 bg-cyan-500/20' : 'border-slate-600 bg-slate-700/40 hover:bg-slate-700'
+                          )}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className={clsx('text-sm md:text-base font-semibold', isToday ? 'text-amber-300' : 'text-white')}>
+                              {day}
+                            </span>
+                            {count > 0 && (
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-500 text-white font-semibold">
+                                {count}
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mt-4 border-t border-slate-700 pt-3 overflow-auto min-h-0">
+                    <div className="text-sm text-slate-300 mb-2">
+                      {selectedCalendarDay
+                        ? `Agendamentos do dia ${new Date(`${selectedCalendarDay}T00:00:00`).toLocaleDateString('pt-BR')}`
+                        : 'Selecione um dia para ver detalhes'}
+                    </div>
+                    {selectedCalendarDay && selectedDaySchedules.length === 0 && (
+                      <div className="text-sm text-slate-400">Sem agendamentos neste dia.</div>
+                    )}
+                    {selectedDaySchedules.length > 0 && (
+                      <div className="space-y-2">
+                        {selectedDaySchedules.map((item) => (
+                          <div key={`tv-day-${String(item.id)}`} className="bg-slate-700/50 border border-slate-600 rounded-lg p-2 text-sm">
+                            <div className="font-semibold text-white">{item.machine_name} | {item.operator_name}</div>
+                            {item.notes && <div className="text-slate-300">Obs: {item.notes}</div>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="xl:col-span-4 bg-slate-800 border border-slate-700 rounded-2xl p-4 md:p-5 flex flex-col min-h-0">
+                  <h3 className="text-lg md:text-xl font-semibold mb-1">Proximos 30 dias</h3>
+                  <p className="text-slate-300 text-sm mb-3">Todos os agendamentos para acompanhamento da equipe</p>
+
+                  <div className="space-y-2 overflow-auto pr-1 min-h-0">
+                    {upcomingThirtyDaysSchedules.length === 0 && (
+                      <div className="bg-slate-700/40 border border-slate-600 rounded-lg p-3 text-slate-300 text-sm">
+                        Nenhum agendamento para os proximos 30 dias.
+                      </div>
+                    )}
+
+                    {upcomingThirtyDaysSchedules.map((item) => (
+                      <div key={`tv-list-${String(item.id)}`} className="bg-slate-700/50 border border-slate-600 rounded-lg p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-sm font-semibold text-white">{item.machine_name}</div>
+                          <span className={clsx('text-xs px-2 py-1 rounded-full', getStatusClass(item.status))}>
+                            {getStatusLabel(item.status)}
+                          </span>
+                        </div>
+                        <div className="text-xs text-slate-300 mt-1">
+                          {new Date(`${item.scheduled_date}T00:00:00`).toLocaleDateString('pt-BR')} | {item.operator_name}
+                        </div>
+                        {item.notes && <div className="text-xs text-slate-400 mt-1">Obs: {item.notes}</div>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         <Layout>
         {!selectedMachine ? (
           // TELA DE SELEÇÃO
@@ -623,6 +844,14 @@ export default function Checklist() {
                     className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-5 py-2.5 rounded-xl shadow-lg shadow-emerald-600/20 flex items-center gap-2 transition-all"
                   >
                     <Settings size={18} /> Cadastrar Inspecao
+                  </button>
+                )}
+                {isAdmin && (
+                  <button
+                    onClick={openTvMode}
+                    className="bg-slate-800 hover:bg-slate-900 text-white font-semibold px-5 py-2.5 rounded-xl shadow-lg shadow-slate-800/20 flex items-center gap-2 transition-all"
+                  >
+                    <Monitor size={18} /> Modo TV
                   </button>
                 )}
               </div>
@@ -793,13 +1022,9 @@ export default function Checklist() {
                         <div className="font-semibold text-slate-800 text-sm">{item.machine_name}</div>
                         <span className={clsx(
                           'text-xs px-2 py-1 rounded-full',
-                          item.status === 'completed'
-                            ? 'bg-emerald-100 text-emerald-700'
-                            : item.status === 'cancelled'
-                              ? 'bg-red-100 text-red-700'
-                              : 'bg-blue-100 text-blue-700'
+                          getStatusClass(item.status)
                         )}>
-                          {item.status === 'completed' ? 'Concluido' : item.status === 'cancelled' ? 'Cancelado' : 'Pendente'}
+                          {getStatusLabel(item.status)}
                         </span>
                       </div>
                       <div className="text-xs text-slate-600 mt-1">

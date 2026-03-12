@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { BookOpenCheck, ChevronLeft, ChevronRight, X } from 'lucide-react';
 
@@ -17,6 +17,19 @@ interface TutorialCenterProps {
 
 export default function TutorialCenter({ open, onClose, tutorials }: TutorialCenterProps) {
   const [selectedId, setSelectedId] = useState<string>('');
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    const previousOverflow = document.body.style.overflow;
+    if (open) {
+      document.body.style.overflow = 'hidden';
+    }
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
 
   const activeTutorial = useMemo(() => {
     if (!tutorials.length) return null;

@@ -60,6 +60,7 @@ interface ServiceOrderBreakState {
   totalMs: number;
   activeStartMs: number | null;
   activeEndMs: number | null;
+  pausedRemainingMs: number | null;
 }
 
 const ORDER_BREAKS_STORAGE_KEY = 'service-order-breaks:v1';
@@ -78,6 +79,7 @@ function readOrderBreaks(): Record<number, ServiceOrderBreakState> {
         totalMs: Math.max(0, Number(value?.totalMs || 0)),
         activeStartMs: value?.activeStartMs ? Number(value.activeStartMs) : null,
         activeEndMs: value?.activeEndMs ? Number(value.activeEndMs) : null,
+        pausedRemainingMs: value?.pausedRemainingMs ? Math.max(0, Number(value.pausedRemainingMs)) : null,
       };
     });
     return normalized;
@@ -131,7 +133,7 @@ export default function ServiceOrders() {
   const [deleteReason, setDeleteReason] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed'>(isAdmin ? 'open' : 'all');
   const [savedFilters, setSavedFilters] = useState<SavedServiceOrdersFilter[]>([]);
   const [savedFilterName, setSavedFilterName] = useState('');
   const [breakMinutesAllowed, setBreakMinutesAllowed] = useState(15);
@@ -189,6 +191,13 @@ export default function ServiceOrders() {
       setSavedFilters([]);
     }
   }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    if (isAdmin && statusFilter !== 'open') {
+      setStatusFilter('open');
+    }
+  }, [isAdmin, user?.id, statusFilter]);
 
   useEffect(() => {
     if (!user) return;
@@ -259,6 +268,7 @@ export default function ServiceOrders() {
         totalMs: Math.max(0, Number(state.totalMs || 0)) + elapsed,
         activeStartMs: null,
         activeEndMs: null,
+        pausedRemainingMs: null,
       };
       completedIds.push(orderId);
       changed = true;
@@ -568,6 +578,7 @@ export default function ServiceOrders() {
         totalMs: prev[order.id]?.totalMs || 0,
         activeStartMs: startMs,
         activeEndMs: endMs,
+        pausedRemainingMs: null,
       },
     }));
 
@@ -589,14 +600,110 @@ export default function ServiceOrders() {
     toast.success(`Intervalo de ${breakMinutesAllowed} minuto(s) iniciado.`);
   };
 
+  const pauseOrderBreak = async (order: ServiceOrder) => {
+    if (!user) return;
+
+    const currentBreak = orderBreaks[order.id];
+    if (!currentBreak?.activeStartMs || !currentBreak?.activeEndMs) {
+      toast.info('Nao ha intervalo ativo para pausar.');
+      return;
+    }
+
+    const now = Date.now();
+    const remainingMs = Math.max(0, currentBreak.activeEndMs - now);
+
+    setOrderBreaks((prev) => ({
+      ...prev,
+      [order.id]: {
+        totalMs: prev[order.id]?.totalMs || 0,
+        activeStartMs: null,
+        activeEndMs: null,
+        pausedRemainingMs: remainingMs,
+      },
+    }));
+
+    await recordAuditAction({
+      action: 'service_order_updated',
+      entityId: order.id,
+      user: {
+        id: user.id,
+        name: user.name,
+        role: user.role,
+      },
+      details: {
+        event: 'service_order_break_paused',
+        remaining_seconds: Math.round(remainingMs / 1000),
+      },
+    });
+
+    toast.info('Intervalo pausado.');
+  };
+
+  const resumeOrderBreak = async (order: ServiceOrder) => {
+    if (!user) return;
+
+    const currentBreak = orderBreaks[order.id];
+    const remainingMs = Math.max(0, Number(currentBreak?.pausedRemainingMs || 0));
+
+    if (!remainingMs) {
+      toast.info('Nao ha intervalo pausado para retomar.');
+      return;
+    }
+
+    const now = Date.now();
+    setOrderBreaks((prev) => ({
+      ...prev,
+      [order.id]: {
+        totalMs: prev[order.id]?.totalMs || 0,
+        activeStartMs: now,
+        activeEndMs: now + remainingMs,
+        pausedRemainingMs: null,
+      },
+    }));
+
+    await recordAuditAction({
+      action: 'service_order_updated',
+      entityId: order.id,
+      user: {
+        id: user.id,
+        name: user.name,
+        role: user.role,
+      },
+      details: {
+        event: 'service_order_break_resumed',
+        remaining_seconds: Math.round(remainingMs / 1000),
+      },
+    });
+
+    toast.success('Intervalo retomado.');
+  };
+
   const getBreakRemainingLabel = (orderId: number) => {
     const state = orderBreaks[orderId];
-    if (!state?.activeEndMs || !state?.activeStartMs) return null;
+    if (!state) return null;
+
+    if (state.pausedRemainingMs) {
+      const pausedMinutes = Math.floor(state.pausedRemainingMs / (1000 * 60));
+      const pausedSeconds = Math.floor((state.pausedRemainingMs % (1000 * 60)) / 1000);
+      return `${String(pausedMinutes).padStart(2, '0')}:${String(pausedSeconds).padStart(2, '0')}`;
+    }
+
+    if (!state.activeEndMs || !state.activeStartMs) return null;
 
     const remainingMs = Math.max(0, state.activeEndMs - Date.now());
     const minutes = Math.floor(remainingMs / (1000 * 60));
     const seconds = Math.floor((remainingMs % (1000 * 60)) / 1000);
     return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  };
+
+  const isBreakActive = (orderId: number) => {
+    const state = orderBreaks[orderId];
+    return Boolean(state?.activeStartMs && state?.activeEndMs && Date.now() < state.activeEndMs);
+  };
+
+  const isBreakPaused = (orderId: number) => {
+    const state = orderBreaks[orderId];
+    return Boolean(state?.pausedRemainingMs && state.pausedRemainingMs > 0);
   };
 
   const validateOrderForm = () => {
@@ -656,6 +763,11 @@ export default function ServiceOrders() {
 
   const filteredOrders = orders.filter((order) => {
     if (!isAdmin && order.operator_id !== user?.id) {
+      return false;
+    }
+
+    // Admin keeps this page focused on active operations; closed items are in History.
+    if (isAdmin && order.status !== 'open') {
       return false;
     }
 
@@ -812,9 +924,15 @@ export default function ServiceOrders() {
             onChange={(e) => setStatusFilter(e.target.value as 'all' | 'open' | 'closed')}
             className="w-full p-2.5 rounded-lg border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none bg-white"
           >
-            <option value="all">Todos</option>
-            <option value="open">Em andamento</option>
-            <option value="closed">Finalizadas</option>
+            {isAdmin ? (
+              <option value="open">Abertas e pausadas</option>
+            ) : (
+              <>
+                <option value="all">Todos</option>
+                <option value="open">Em andamento</option>
+                <option value="closed">Finalizadas</option>
+              </>
+            )}
           </select>
         </div>
 
@@ -859,7 +977,7 @@ export default function ServiceOrders() {
           <button
             onClick={() => {
               setSearchTerm('');
-              setStatusFilter('all');
+              setStatusFilter(isAdmin ? 'open' : 'all');
             }}
             className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-2.5 rounded-lg transition-colors"
           >
@@ -881,6 +999,11 @@ export default function ServiceOrders() {
                 <span className={`px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide ${order.status === 'open' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
                   {order.status === 'open' ? 'Em Andamento' : 'Finalizada'}
                 </span>
+                {order.status === 'open' && isBreakPaused(order.id) && (
+                  <span className="px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide bg-amber-100 text-amber-700">
+                    Intervalo pausado
+                  </span>
+                )}
                 <span className="text-sm text-slate-400 font-mono">#{order.id.toString().padStart(4, '0')}</span>
               </div>
               <h3 className="text-lg font-bold text-slate-900">{order.machine_name}</h3>
@@ -931,13 +1054,29 @@ export default function ServiceOrders() {
                       </button>
                       <button
                         onClick={() => void startOrderBreak(order)}
-                        disabled={Boolean(getBreakRemainingLabel(order.id))}
+                        disabled={isBreakActive(order.id) || isBreakPaused(order.id)}
                         className="bg-amber-100 hover:bg-amber-200 disabled:opacity-60 disabled:cursor-not-allowed text-amber-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                       >
-                        {getBreakRemainingLabel(order.id)
+                        {isBreakActive(order.id) || isBreakPaused(order.id)
                           ? `Em intervalo (${getBreakRemainingLabel(order.id)})`
                           : `Iniciar intervalo (${breakMinutesAllowed} min)`}
                       </button>
+                      {isBreakActive(order.id) && (
+                        <button
+                          onClick={() => void pauseOrderBreak(order)}
+                          className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                        >
+                          Pausar intervalo
+                        </button>
+                      )}
+                      {isBreakPaused(order.id) && (
+                        <button
+                          onClick={() => void resumeOrderBreak(order)}
+                          className="bg-emerald-100 hover:bg-emerald-200 text-emerald-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                        >
+                          Retomar intervalo ({getBreakRemainingLabel(order.id)})
+                        </button>
+                      )}
                     </>
                   )
                 ) : (

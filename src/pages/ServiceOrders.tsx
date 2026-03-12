@@ -107,6 +107,7 @@ export default function ServiceOrders() {
   const [finishModalOpen, setFinishModalOpen] = useState(false);
   const [finishingOrderId, setFinishingOrderId] = useState<number | null>(null);
   const [finalReport, setFinalReport] = useState('');
+  const [showFinishWithoutResolutionConfirm, setShowFinishWithoutResolutionConfirm] = useState(false);
   const [partsTools, setPartsTools] = useState<PartTool[]>([]);
   const [isPartsToolsModalOpen, setIsPartsToolsModalOpen] = useState(false);
   const [newPartTool, setNewPartTool] = useState({ name: '', description: '', category: 'tool' as 'tool' | 'part' });
@@ -534,6 +535,67 @@ export default function ServiceOrders() {
       toast.error('❌ Erro ao excluir as ordens selecionadas.');
     } finally {
       setIsDeletingAllOrders(false);
+    }
+  };
+
+  const submitFinishOrder = async (allowWithoutResolution: boolean) => {
+    if (!finishingOrderId) return;
+    if (!user) return;
+
+    const resolutionText = finishReason.trim();
+    if (!resolutionText && !allowWithoutResolution) {
+      setShowFinishWithoutResolutionConfirm(true);
+      return;
+    }
+
+    try {
+      const breakState = orderBreaks[finishingOrderId];
+      const activeBreakMs = breakState?.activeStartMs
+        ? Math.max(0, Math.min(Date.now(), breakState.activeEndMs || Date.now()) - breakState.activeStartMs)
+        : 0;
+      const breakTotalMs = Math.max(0, Number(breakState?.totalMs || 0) + activeBreakMs);
+      const breakLimitMinutes = Math.max(0, Number(breakMinutesAllowed || 0));
+      const breakExceededLimit = breakTotalMs > breakLimitMinutes * 60 * 1000;
+
+      const result = await closeServiceOrder(
+        finishingOrderId,
+        new Date().toISOString(),
+        finalReport || undefined
+      );
+      if (result) {
+        await recordAuditAction({
+          action: 'service_order_closed',
+          entityId: finishingOrderId,
+          user: {
+            id: user.id,
+            name: user.name,
+            role: user.role,
+          },
+          details: {
+            status_from: 'open',
+            status_to: 'closed',
+            reason: resolutionText || null,
+            closed_without_resolution_note: !resolutionText,
+            has_final_report: Boolean(finalReport?.trim()),
+            break_total_ms: breakTotalMs,
+            break_limit_minutes: breakLimitMinutes,
+            break_exceeded_limit: breakExceededLimit,
+          },
+        });
+
+        toast.success('✅ Ordem de serviço finalizada com sucesso!');
+        await fetchOrders();
+        setShowFinishWithoutResolutionConfirm(false);
+        setFinishModalOpen(false);
+        setFinalReport('');
+        setFinishReason('');
+        setFinishingOrderId(null);
+      } else {
+        toast.error('Erro ao finalizar ordem de serviço.');
+      }
+    } catch (err) {
+      console.error('Erro:', err);
+      toast.error('Erro ao finalizar ordem de serviço.');
     }
   };
 
@@ -1511,65 +1573,56 @@ export default function ServiceOrders() {
               />
               <div className="flex flex-col sm:flex-row gap-3 mt-6">
                 <button
-                  onClick={() => setFinishModalOpen(false)}
+                  onClick={() => {
+                    setFinishModalOpen(false);
+                    setShowFinishWithoutResolutionConfirm(false);
+                  }}
                   className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-3 rounded-xl transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
-                  onClick={async () => {
-                    if (!finishingOrderId) return;
-                    if (!user) return;
-
-                    const resolutionText = finishReason.trim();
-                    if (!resolutionText) {
-                      const confirmedWithoutResolution = window.confirm(
-                        'Deseja finalizar esta O.S sem informar se foi resolvido?'
-                      );
-                      if (!confirmedWithoutResolution) return;
-                    }
-
-                    try {
-                      const result = await closeServiceOrder(
-                        finishingOrderId,
-                        new Date().toISOString(),
-                        finalReport || undefined
-                      );
-                      if (result) {
-                        await recordAuditAction({
-                          action: 'service_order_closed',
-                          entityId: finishingOrderId,
-                          user: {
-                            id: user.id,
-                            name: user.name,
-                            role: user.role,
-                          },
-                          details: {
-                            status_from: 'open',
-                            status_to: 'closed',
-                            reason: resolutionText || null,
-                            closed_without_resolution_note: !resolutionText,
-                            has_final_report: Boolean(finalReport?.trim()),
-                          },
-                        });
-
-                        toast.success('✅ Ordem de serviço finalizada com sucesso!');
-                        await fetchOrders();
-                        setFinishModalOpen(false);
-                        setFinalReport('');
-                        setFinishReason('');
-                        setFinishingOrderId(null);
-                      } else {
-                        toast.error('Erro ao finalizar ordem de serviço.');
-                      }
-                    } catch (err) {
-                      console.error('Erro:', err);
-                      toast.error('Erro ao finalizar ordem de serviço.');
-                    }
+                  onClick={() => {
+                    void submitFinishOrder(false);
                   }}
                   className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-medium py-3 rounded-xl shadow-lg shadow-orange-500/20 transition-colors"
                 >
                   Finalizar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showFinishWithoutResolutionConfirm && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 8 }}
+              className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 p-5"
+            >
+              <h3 className="text-lg font-bold text-slate-900">Finalizar sem status de resolucao?</h3>
+              <p className="text-sm text-slate-600 mt-2">
+                Esta O.S sera finalizada sem informar se o problema foi resolvido. Deseja continuar mesmo assim?
+              </p>
+
+              <div className="flex flex-col sm:flex-row gap-3 mt-5">
+                <button
+                  onClick={() => setShowFinishWithoutResolutionConfirm(false)}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-2.5 rounded-lg"
+                >
+                  Voltar
+                </button>
+                <button
+                  onClick={() => {
+                    void submitFinishOrder(true);
+                  }}
+                  className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-medium py-2.5 rounded-lg"
+                >
+                  Finalizar mesmo assim
                 </button>
               </div>
             </motion.div>

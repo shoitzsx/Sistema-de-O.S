@@ -10,7 +10,8 @@ import {
   deleteServiceOrdersByIds,
   verifyUserCredentials,
 } from '../lib/supabaseApi';
-import { recordAuditAction } from '../lib/audit';
+import { getLocalAuditLogs, isRemoteAuditEnabled, recordAuditAction } from '../lib/audit';
+import { supabase } from '../lib/supabase';
 
 interface SavedHistoryFilter {
   id: string;
@@ -39,6 +40,12 @@ interface ServiceOrder {
   final_report?: string;
 }
 
+interface BreakSummary {
+  breakTotalMs: number | null;
+  breakLimitMinutes: number | null;
+  breakExceededLimit: boolean | null;
+}
+
 export default function History() {
   const { user } = useAuth();
   const normalizedRole = String(user?.role || '').trim().toLowerCase();
@@ -64,11 +71,102 @@ export default function History() {
   const [selectedOrderIds, setSelectedOrderIds] = useState<number[]>([]);
   const [deleteReason, setDeleteReason] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
+  const [breakSummaryByOrderId, setBreakSummaryByOrderId] = useState<Record<number, BreakSummary>>({});
 
   useEffect(() => {
     if (!user) return;
     void fetchOrders();
   }, [user?.id, isAdmin]);
+
+  useEffect(() => {
+    if (!user || !orders.length) {
+      setBreakSummaryByOrderId({});
+      return;
+    }
+
+    const scopedOrderIds = new Set(
+      (isAdmin ? orders : orders.filter((order) => order.operator_id === user.id)).map((order) => order.id)
+    );
+
+    const parseBreakSummary = (details: Record<string, unknown> | null | undefined): BreakSummary | null => {
+      if (!details || typeof details !== 'object') return null;
+
+      const breakTotalMs = Number(details.break_total_ms);
+      const breakLimitMinutes = Number(details.break_limit_minutes);
+      const breakExceededLimitRaw = details.break_exceeded_limit;
+
+      const hasAny =
+        Number.isFinite(breakTotalMs) ||
+        Number.isFinite(breakLimitMinutes) ||
+        typeof breakExceededLimitRaw === 'boolean';
+
+      if (!hasAny) return null;
+
+      return {
+        breakTotalMs: Number.isFinite(breakTotalMs) ? breakTotalMs : null,
+        breakLimitMinutes: Number.isFinite(breakLimitMinutes) ? breakLimitMinutes : null,
+        breakExceededLimit:
+          typeof breakExceededLimitRaw === 'boolean'
+            ? breakExceededLimitRaw
+            : Number.isFinite(breakTotalMs) && Number.isFinite(breakLimitMinutes)
+            ? breakTotalMs > breakLimitMinutes * 60 * 1000
+            : null,
+      };
+    };
+
+    const loadBreakSummary = async () => {
+      const localRows = getLocalAuditLogs()
+        .filter((row) => row.action === 'service_order_closed' && typeof row.entity_id === 'number')
+        .map((row) => ({
+          entity_id: row.entity_id as number,
+          created_at: row.created_at,
+          details: row.details,
+        }));
+
+      let mergedRows = [...localRows];
+
+      if (isRemoteAuditEnabled()) {
+        try {
+          const { data, error } = await supabase
+            .from('audit_logs')
+            .select('entity_id, details, action, created_at')
+            .eq('action', 'service_order_closed')
+            .order('created_at', { ascending: false })
+            .limit(1500);
+
+          if (!error) {
+            const remoteRows = (data || [])
+              .filter((row: any) => typeof row.entity_id === 'number')
+              .map((row: any) => ({
+                entity_id: row.entity_id as number,
+                created_at: String(row.created_at || ''),
+                details: typeof row.details === 'object' && row.details ? row.details : {},
+              }));
+
+            mergedRows = [...remoteRows, ...localRows];
+          }
+        } catch {
+          // Fallback local only.
+        }
+      }
+
+      const nextSummary: Record<number, BreakSummary> = {};
+
+      mergedRows
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .forEach((row) => {
+          if (!scopedOrderIds.has(row.entity_id)) return;
+          if (nextSummary[row.entity_id]) return;
+          const parsed = parseBreakSummary(row.details as Record<string, unknown>);
+          if (!parsed) return;
+          nextSummary[row.entity_id] = parsed;
+        });
+
+      setBreakSummaryByOrderId(nextSummary);
+    };
+
+    void loadBreakSummary();
+  }, [orders, user?.id, isAdmin]);
 
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
@@ -206,16 +304,28 @@ export default function History() {
     });
   };
 
-  const escapeCsvField = (value: string) => {
+  const formatMsDuration = (ms: number | null) => {
+    if (!Number.isFinite(Number(ms)) || ms === null) return '-';
+
+    const totalMs = Math.max(0, Number(ms));
+    const hours = Math.floor(totalMs / (1000 * 60 * 60));
+    const minutes = Math.floor((totalMs % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((totalMs % (1000 * 60)) / 1000);
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  };
+
+  const escapeCsvField = (value: unknown) => {
     const normalized = String(value ?? '').replace(/\r?\n/g, ' ');
     return `"${normalized.replace(/"/g, '""')}"`;
   };
 
   const exportToCSV = () => {
-    const headers = ['ID', 'Máquina', 'Operador', 'Responsável', 'Tipo', 'Componente', 'Início', 'Início ISO', 'Fim', 'Fim ISO', 'Duração', 'Status', 'Relatório'];
+    const headers = ['ID', 'Máquina', 'Operador', 'Responsável', 'Tipo', 'Componente', 'Início', 'Início ISO', 'Fim', 'Fim ISO', 'Duração', 'Pausa Total', 'Limite de Pausa (min)', 'Ultrapassou Limite', 'Status', 'Relatório'];
     const csvContent = [
       headers.map(escapeCsvField).join(';'),
-      ...filteredOrders.map(order => [
+      ...filteredOrders.map(order => {
+        const summary = breakSummaryByOrderId[order.id];
+        return [
         `#${order.id.toString().padStart(4, '0')}`,
         order.machine_name,
         order.operator_name,
@@ -227,9 +337,17 @@ export default function History() {
         order.end_time ? formatDate(order.end_time) : '-',
         order.end_time || '-',
         calculateDuration(order.start_time, order.end_time),
+        formatMsDuration(summary?.breakTotalMs ?? null),
+        summary?.breakLimitMinutes ?? '-',
+        summary?.breakExceededLimit === null || summary?.breakExceededLimit === undefined
+          ? '-'
+          : summary?.breakExceededLimit
+          ? 'Sim'
+          : 'Nao',
         order.status === 'closed' ? 'Finalizada' : 'Em Andamento',
         order.final_report || '-'
-      ].map(field => escapeCsvField(field)).join(';'))
+      ].map(field => escapeCsvField(field)).join(';');
+      })
     ].join('\r\n');
 
     const blob = new Blob(['\uFEFF', csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -732,7 +850,7 @@ export default function History() {
                 )}
 
                 {/* Datas e Duração */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-4 text-sm">
                   <div className="bg-slate-50 p-3 rounded-lg">
                     <p className="text-slate-500 text-xs font-medium mb-1">Início</p>
                     <p className="text-slate-800 font-medium">{formatDate(order.start_time)}</p>
@@ -747,6 +865,33 @@ export default function History() {
                       <p className="text-slate-500 text-xs font-medium mb-1">Duração</p>
                       <p className="text-slate-800 font-mono font-bold">{calculateDuration(order.start_time, order.end_time)}</p>
                     </div>
+                  </div>
+                  <div className="bg-slate-50 p-3 rounded-lg">
+                    <p className="text-slate-500 text-xs font-medium mb-1">Pausa total</p>
+                    <p className="text-slate-800 font-mono font-bold">
+                      {formatMsDuration(breakSummaryByOrderId[order.id]?.breakTotalMs ?? null)}
+                    </p>
+                  </div>
+                  <div className="bg-slate-50 p-3 rounded-lg">
+                    <p className="text-slate-500 text-xs font-medium mb-1">Limite de pausa</p>
+                    <p className="text-slate-800 font-medium">
+                      {breakSummaryByOrderId[order.id]?.breakLimitMinutes ?? '-'} min
+                    </p>
+                    <p
+                      className={`text-xs font-semibold mt-1 ${
+                        breakSummaryByOrderId[order.id]?.breakExceededLimit === true
+                          ? 'text-red-600'
+                          : breakSummaryByOrderId[order.id]?.breakExceededLimit === false
+                          ? 'text-emerald-600'
+                          : 'text-slate-500'
+                      }`}
+                    >
+                      {breakSummaryByOrderId[order.id]?.breakExceededLimit === true
+                        ? 'Ultrapassou o limite'
+                        : breakSummaryByOrderId[order.id]?.breakExceededLimit === false
+                        ? 'Dentro do limite'
+                        : 'Sem informacao de pausa'}
+                    </p>
                   </div>
                   <div className="bg-slate-50 p-3 rounded-lg">
                     <p className="text-slate-500 text-xs font-medium mb-1">Status</p>

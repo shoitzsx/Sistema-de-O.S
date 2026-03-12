@@ -177,6 +177,14 @@ export default function Dashboard() {
 
   const modules = [
     {
+      id: 8,
+      name: 'Painel de Controle',
+      description: 'Acompanhe indicadores principais de manutenção em tempo real.',
+      icon: Activity,
+      color: 'bg-sky-500',
+      path: '/control-panel'
+    },
+    {
       id: 1,
       name: 'Manuais Técnicos',
       description: 'Gerenciar manuais e documentação de equipamentos.',
@@ -239,6 +247,16 @@ export default function Dashboard() {
     : modules.filter(m => user?.allowed_modules.includes(m.id));
 
   const tutorialByModuleId: Record<number, TutorialItem> = {
+    8: {
+      id: 'control-panel',
+      title: 'Painel de Controle',
+      description: 'Veja rapidamente os principais indicadores operacionais de manutenção.',
+      bullets: [
+        'Acompanhe O.S abertas para priorizar atendimento.',
+        'Monitore O.S em atraso e atue antes de gerar impacto operacional.',
+        'Use finalizadas hoje e tempo médio para avaliar performance da equipe.'
+      ]
+    },
     1: {
       id: 'manuals-operator',
       title: 'Manuais Técnicos',

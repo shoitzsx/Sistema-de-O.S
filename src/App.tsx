@@ -5,6 +5,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 
 const Login = lazy(() => import('./pages/Login'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const ControlPanel = lazy(() => import('./pages/ControlPanel'));
 const Manuals = lazy(() => import('./pages/Manuals'));
 const Checklist = lazy(() => import('./pages/Checklist'));
 const ChecklistHistory = lazy(() => import('./pages/ChecklistHistory'));
@@ -23,6 +24,7 @@ export default function App() {
 
             <Route element={<ProtectedRoute />}>
               <Route path="/" element={<Dashboard />} />
+              <Route path="/control-panel" element={<ControlPanel />} />
               <Route path="/manuals" element={<Manuals />} />
               <Route path="/checklist" element={<Checklist />} />
               <Route path="/checklist-history" element={<ChecklistHistory />} />

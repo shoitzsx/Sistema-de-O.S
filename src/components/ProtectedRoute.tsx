@@ -2,6 +2,7 @@ import { useAuth } from '../context/AuthContext';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 
 const routeModuleByPrefix: Array<{ prefix: string; moduleId: number | 'admin-only' }> = [
+  { prefix: '/control-panel', moduleId: 8 },
   { prefix: '/manuals', moduleId: 1 },
   { prefix: '/checklist-history', moduleId: 6 },
   { prefix: '/checklist', moduleId: 2 },

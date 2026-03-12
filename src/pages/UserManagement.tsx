@@ -15,6 +15,7 @@ interface User {
 }
 
 const MODULES = [
+  { id: 8, name: 'Painel de Controle', icon: '📊' },
   { id: 1, name: 'Manuais Técnicos', icon: '📚' },
   { id: 2, name: 'Checklist Mensal', icon: '✅' },
   { id: 3, name: 'Manutenção Corretiva', icon: '🔧' },

@@ -10,6 +10,8 @@ import {
   getMachines,
   getChecklistTemplateByModel,
   createChecklist,
+  getChecklists,
+  getServiceOrders,
   getUsers,
   getChecklistSchedules,
   createChecklistSchedule,
@@ -58,11 +60,30 @@ interface TemplateCategory {
   items: string[];
 }
 
+interface TvServiceOrderSummary {
+  id: number;
+  status: 'open' | 'closed' | string;
+  start_time: string;
+  end_time: string | null;
+  operator_id: number;
+}
+
+interface TvChecklistSummary {
+  status: string;
+  date: string;
+  operator_id: number;
+}
+
 function toChecklistObject(value: unknown): Record<string, ChecklistItem> {
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     return value as Record<string, ChecklistItem>;
   }
   return {};
+}
+
+function toSafeDate(value: unknown): Date {
+  const parsed = new Date(typeof value === 'string' && value ? value : Date.now());
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
 export default function Checklist() {
@@ -93,6 +114,8 @@ export default function Checklist() {
   const [selectedCalendarDay, setSelectedCalendarDay] = useState<string | null>(null);
   const [isCreatingSchedule, setIsCreatingSchedule] = useState(false);
   const [isTvMode, setIsTvMode] = useState(false);
+  const [tvOrders, setTvOrders] = useState<TvServiceOrderSummary[]>([]);
+  const [tvChecklists, setTvChecklists] = useState<TvChecklistSummary[]>([]);
   const [scheduleForm, setScheduleForm] = useState({
     operator_id: '',
     machine_id: '',
@@ -212,6 +235,49 @@ export default function Checklist() {
     }, 30000);
 
     return () => clearInterval(interval);
+  }, [isTvMode, user?.id, isAdmin]);
+
+  useEffect(() => {
+    if (!isTvMode || !user) return;
+
+    let isMounted = true;
+
+    const loadTvPanelData = async () => {
+      try {
+        const [ordersData, checklistData] = await Promise.all([getServiceOrders(), getChecklists()]);
+        if (!isMounted) return;
+
+        setTvOrders(
+          (ordersData || []).map((order) => ({
+            id: order.id,
+            status: String(order.status || 'open'),
+            start_time: String(order.start_time || new Date().toISOString()),
+            end_time: order.end_time ? String(order.end_time) : null,
+            operator_id: Number(order.operator_id || 0),
+          }))
+        );
+
+        setTvChecklists(
+          (checklistData || []).map((item: any) => ({
+            status: String(item.status || 'pending'),
+            date: String(item.date || item.created_at || new Date().toISOString()),
+            operator_id: Number(item.operator_id || 0),
+          }))
+        );
+      } catch (err) {
+        console.error('Erro ao carregar painel do modo TV:', err);
+      }
+    };
+
+    void loadTvPanelData();
+    const interval = setInterval(() => {
+      void loadTvPanelData();
+    }, 30000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, [isTvMode, user?.id, isAdmin]);
 
   useEffect(() => {
@@ -374,6 +440,36 @@ export default function Checklist() {
         .sort((a, b) => new Date(a.scheduled_date).getTime() - new Date(b.scheduled_date).getTime())
     : [];
 
+  const tvVisibleOrders = user
+    ? isAdmin
+      ? tvOrders
+      : tvOrders.filter((order) => order.operator_id === user.id)
+    : [];
+
+  const tvOpenOrders = tvVisibleOrders.filter((order) => order.status === 'open').length;
+  const tvOverdueOrders = tvVisibleOrders.filter((order) => {
+    if (order.status !== 'open') return false;
+    const startedAt = new Date(order.start_time).getTime();
+    if (!Number.isFinite(startedAt)) return false;
+    return Date.now() - startedAt > 24 * 60 * 60 * 1000;
+  }).length;
+  const tvClosedToday = tvVisibleOrders.filter((order) => {
+    if (order.status !== 'closed' || !order.end_time) return false;
+    return toSafeDate(order.end_time).getTime() >= today.getTime();
+  }).length;
+
+  const tvVisibleChecklists = isAdmin
+    ? tvChecklists
+    : tvChecklists.filter((entry) => entry.operator_id === user?.id);
+  const tvPendingChecklists = tvVisibleChecklists.filter((entry) => entry.status !== 'completed').length;
+  const tvCompletedToday = tvVisibleChecklists.filter((entry) => {
+    if (entry.status !== 'completed') return false;
+    return toSafeDate(entry.date).getTime() >= today.getTime();
+  }).length;
+  const tvCompletionRate = tvVisibleChecklists.length
+    ? (tvVisibleChecklists.filter((entry) => entry.status === 'completed').length / tvVisibleChecklists.length) * 100
+    : 0;
+
   const getStatusLabel = (status: ChecklistSchedule['status']) => {
     if (status === 'completed') return 'Concluido';
     if (status === 'cancelled') return 'Cancelado';
@@ -384,6 +480,12 @@ export default function Checklist() {
     if (status === 'completed') return 'bg-emerald-100 text-emerald-700';
     if (status === 'cancelled') return 'bg-red-100 text-red-700';
     return 'bg-blue-100 text-blue-700';
+  };
+
+  const getTvStatusClass = (status: ChecklistSchedule['status']) => {
+    if (status === 'completed') return 'bg-emerald-100 text-emerald-700';
+    if (status === 'cancelled') return 'bg-red-100 text-red-700';
+    return 'bg-lime-100 text-lime-700';
   };
 
   useEffect(() => {
@@ -694,29 +796,29 @@ export default function Checklist() {
       <>
         <NokConfirmDialog />
         {isTvMode && (
-          <div className="fixed inset-0 z-[90] bg-slate-900 text-white p-4 md:p-6 overflow-hidden">
+          <div className="fixed inset-0 z-[90] bg-gradient-to-br from-emerald-100 via-white to-emerald-50 text-slate-900 p-4 md:p-6 overflow-hidden">
             <div className="h-full flex flex-col">
-              <div className="flex items-center justify-between gap-3 border-b border-slate-700 pb-4 mb-4">
+              <div className="flex items-center justify-between gap-3 border-b border-emerald-200 pb-4 mb-4">
                 <div>
                   <h2 className="text-2xl md:text-3xl font-bold">Checklist Mensal - Modo TV</h2>
-                  <p className="text-slate-300 text-sm md:text-base">Visao de agendamentos para comunicacao com a equipe</p>
+                  <p className="text-slate-600 text-sm md:text-base">Visao de agendamentos para comunicacao com a equipe</p>
                 </div>
                 <button
                   onClick={closeTvMode}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white"
                 >
                   <Minimize2 size={16} /> Sair do modo TV
                 </button>
               </div>
 
               <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 flex-1 min-h-0">
-                <div className="xl:col-span-8 bg-slate-800 border border-slate-700 rounded-2xl p-4 md:p-5 flex flex-col min-h-0">
+                <div className="xl:col-span-8 bg-white border border-emerald-200 rounded-2xl p-4 md:p-5 flex flex-col min-h-0 shadow-sm">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg md:text-xl font-semibold">Calendario de Agendamentos</h3>
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))}
-                        className="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600"
+                        className="px-3 py-2 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800"
                       >
                         &larr;
                       </button>
@@ -725,20 +827,20 @@ export default function Checklist() {
                       </div>
                       <button
                         onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))}
-                        className="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600"
+                        className="px-3 py-2 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800"
                       >
                         &rarr;
                       </button>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-7 gap-2 text-center text-xs md:text-sm font-semibold text-slate-300 mb-2">
+                  <div className="grid grid-cols-7 gap-2 text-center text-xs md:text-sm font-semibold text-emerald-800 mb-2">
                     <div>Dom</div><div>Seg</div><div>Ter</div><div>Qua</div><div>Qui</div><div>Sex</div><div>Sab</div>
                   </div>
 
                   <div className="grid grid-cols-7 gap-2">
                     {Array.from({ length: firstWeekday }).map((_, idx) => (
-                      <div key={`tv-empty-${idx}`} className="h-20 md:h-24 rounded-lg bg-slate-700/40 border border-slate-700" />
+                      <div key={`tv-empty-${idx}`} className="h-20 md:h-24 rounded-lg bg-emerald-50 border border-emerald-100" />
                     ))}
 
                     {Array.from({ length: daysInMonth }).map((_, idx) => {
@@ -754,15 +856,27 @@ export default function Checklist() {
                           onClick={() => setSelectedCalendarDay((prev) => (prev === dayIso ? null : dayIso))}
                           className={clsx(
                             'h-20 md:h-24 rounded-lg border p-2 text-left transition-colors',
-                            isSelected ? 'border-cyan-400 bg-cyan-500/20' : 'border-slate-600 bg-slate-700/40 hover:bg-slate-700'
+                            isSelected
+                              ? 'border-emerald-700 bg-emerald-700 text-white shadow-sm'
+                              : 'border-emerald-200 bg-emerald-50 hover:bg-emerald-100'
                           )}
                         >
                           <div className="flex items-center justify-between">
-                            <span className={clsx('text-sm md:text-base font-semibold', isToday ? 'text-amber-300' : 'text-white')}>
+                            <span
+                              className={clsx(
+                                'text-sm md:text-base font-semibold',
+                                isSelected ? 'text-white' : isToday ? 'text-emerald-700' : 'text-slate-700'
+                              )}
+                            >
                               {day}
                             </span>
                             {count > 0 && (
-                              <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-500 text-white font-semibold">
+                              <span
+                                className={clsx(
+                                  'text-xs px-2 py-0.5 rounded-full font-semibold',
+                                  isSelected ? 'bg-white text-emerald-700' : 'bg-emerald-600 text-white'
+                                )}
+                              >
                                 {count}
                               </span>
                             )}
@@ -772,21 +886,21 @@ export default function Checklist() {
                     })}
                   </div>
 
-                  <div className="mt-4 border-t border-slate-700 pt-3 overflow-auto min-h-0">
-                    <div className="text-sm text-slate-300 mb-2">
-                      {selectedCalendarDay
-                        ? `Agendamentos do dia ${new Date(`${selectedCalendarDay}T00:00:00`).toLocaleDateString('pt-BR')}`
-                        : 'Selecione um dia para ver detalhes'}
-                    </div>
+                  <div className="mt-4 border-t border-emerald-100 pt-3 overflow-auto min-h-0">
+                    {selectedCalendarDay && (
+                      <div className="text-sm text-slate-700 mb-2 font-semibold">
+                        {`Agendamentos do dia ${new Date(`${selectedCalendarDay}T00:00:00`).toLocaleDateString('pt-BR')}`}
+                      </div>
+                    )}
                     {selectedCalendarDay && selectedDaySchedules.length === 0 && (
-                      <div className="text-sm text-slate-400">Sem agendamentos neste dia.</div>
+                      <div className="text-sm text-slate-500">Sem agendamentos neste dia.</div>
                     )}
                     {selectedDaySchedules.length > 0 && (
                       <div className="space-y-2">
                         {selectedDaySchedules.map((item) => (
-                          <div key={`tv-day-${String(item.id)}`} className="bg-slate-700/50 border border-slate-600 rounded-lg p-2 text-sm">
-                            <div className="font-semibold text-white">{item.machine_name} | {item.operator_name}</div>
-                            {item.notes && <div className="text-slate-300">Obs: {item.notes}</div>}
+                          <div key={`tv-day-${String(item.id)}`} className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 text-sm">
+                            <div className="font-semibold text-slate-800">{item.machine_name} | {item.operator_name}</div>
+                            {item.notes && <div className="text-slate-600">Obs: {item.notes}</div>}
                           </div>
                         ))}
                       </div>
@@ -794,31 +908,65 @@ export default function Checklist() {
                   </div>
                 </div>
 
-                <div className="xl:col-span-4 bg-slate-800 border border-slate-700 rounded-2xl p-4 md:p-5 flex flex-col min-h-0">
-                  <h3 className="text-lg md:text-xl font-semibold mb-1">Proximos 30 dias</h3>
-                  <p className="text-slate-300 text-sm mb-3">Todos os agendamentos para acompanhamento da equipe</p>
+                <div className="xl:col-span-4 flex flex-col gap-4 min-h-0">
+                  <div className="bg-white border border-emerald-200 rounded-2xl p-4 md:p-5 flex flex-col min-h-0 shadow-sm">
+                    <h3 className="text-lg md:text-xl font-semibold mb-1">Proximos 30 dias</h3>
+                    <p className="text-slate-600 text-sm mb-3">Todos os agendamentos para acompanhamento da equipe</p>
 
-                  <div className="space-y-2 overflow-auto pr-1 min-h-0">
-                    {upcomingThirtyDaysSchedules.length === 0 && (
-                      <div className="bg-slate-700/40 border border-slate-600 rounded-lg p-3 text-slate-300 text-sm">
-                        Nenhum agendamento para os proximos 30 dias.
-                      </div>
-                    )}
+                    <div className="space-y-2 overflow-auto pr-1 min-h-0">
+                      {upcomingThirtyDaysSchedules.length === 0 && (
+                        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-slate-600 text-sm">
+                          Nenhum agendamento para os proximos 30 dias.
+                        </div>
+                      )}
 
-                    {upcomingThirtyDaysSchedules.map((item) => (
-                      <div key={`tv-list-${String(item.id)}`} className="bg-slate-700/50 border border-slate-600 rounded-lg p-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="text-sm font-semibold text-white">{item.machine_name}</div>
-                          <span className={clsx('text-xs px-2 py-1 rounded-full', getStatusClass(item.status))}>
-                            {getStatusLabel(item.status)}
-                          </span>
+                      {upcomingThirtyDaysSchedules.map((item) => (
+                        <div key={`tv-list-${String(item.id)}`} className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-sm font-semibold text-slate-800">{item.machine_name}</div>
+                            <span className={clsx('text-xs px-2 py-1 rounded-full', getTvStatusClass(item.status))}>
+                              {getStatusLabel(item.status)}
+                            </span>
+                          </div>
+                          <div className="text-xs text-slate-600 mt-1">
+                            {new Date(`${item.scheduled_date}T00:00:00`).toLocaleDateString('pt-BR')} | {item.operator_name}
+                          </div>
+                          {item.notes && <div className="text-xs text-slate-500 mt-1">Obs: {item.notes}</div>}
                         </div>
-                        <div className="text-xs text-slate-300 mt-1">
-                          {new Date(`${item.scheduled_date}T00:00:00`).toLocaleDateString('pt-BR')} | {item.operator_name}
-                        </div>
-                        {item.notes && <div className="text-xs text-slate-400 mt-1">Obs: {item.notes}</div>}
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="bg-white border border-emerald-200 rounded-2xl p-4 md:p-5 shadow-sm">
+                    <h3 className="text-lg md:text-xl font-semibold mb-1">Painel de Controle</h3>
+                    <p className="text-slate-600 text-sm mb-3">Indicadores de O.S e Checklist</p>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                        <p className="text-xs text-slate-600">O.S abertas</p>
+                        <p className="text-2xl font-bold text-emerald-700">{tvOpenOrders}</p>
                       </div>
-                    ))}
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                        <p className="text-xs text-slate-600">O.S em atraso</p>
+                        <p className="text-2xl font-bold text-amber-600">{tvOverdueOrders}</p>
+                      </div>
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                        <p className="text-xs text-slate-600">O.S finalizadas hoje</p>
+                        <p className="text-2xl font-bold text-emerald-700">{tvClosedToday}</p>
+                      </div>
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                        <p className="text-xs text-slate-600">Checklist pendentes</p>
+                        <p className="text-2xl font-bold text-amber-600">{tvPendingChecklists}</p>
+                      </div>
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                        <p className="text-xs text-slate-600">Checklist concluidos hoje</p>
+                        <p className="text-2xl font-bold text-emerald-700">{tvCompletedToday}</p>
+                      </div>
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                        <p className="text-xs text-slate-600">Taxa de conclusao</p>
+                        <p className="text-2xl font-bold text-emerald-700">{tvCompletionRate.toFixed(0)}%</p>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

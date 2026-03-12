@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, AlertTriangle, CheckCircle2, Timer } from 'lucide-react';
+import { Activity, AlertCircle, AlertTriangle, Calendar, CheckCircle, CheckCircle2, Timer } from 'lucide-react';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
-import { getServiceOrders } from '../lib/supabaseApi';
+import { getChecklists, getServiceOrders } from '../lib/supabaseApi';
 
 interface ServiceOrderSummary {
   id: number;
@@ -12,10 +12,22 @@ interface ServiceOrderSummary {
   operator_id: number;
 }
 
+interface ChecklistSummary {
+  status: 'pending' | 'completed' | string;
+  date: string;
+  operator_id: number;
+}
+
+function toSafeDate(value: unknown): Date {
+  const parsed = new Date(typeof value === 'string' && value ? value : Date.now());
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
 export default function ControlPanel() {
   const { user } = useAuth();
   const isAdmin = String(user?.role || '').trim().toLowerCase() === 'admin';
   const [orders, setOrders] = useState<ServiceOrderSummary[]>([]);
+  const [checklists, setChecklists] = useState<ChecklistSummary[]>([]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -38,6 +50,30 @@ export default function ControlPanel() {
     void loadData();
     const interval = setInterval(() => {
       void loadData();
+    }, 90000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const loadChecklistSummary = async () => {
+      try {
+        const data = await getChecklists();
+        setChecklists(
+          (data || []).map((item: any) => ({
+            status: String(item.status || 'pending'),
+            date: String(item.date || item.created_at || new Date().toISOString()),
+            operator_id: Number(item.operator_id || 0),
+          }))
+        );
+      } catch (err) {
+        console.error('Erro ao carregar indicadores de checklist:', err);
+      }
+    };
+
+    void loadChecklistSummary();
+    const interval = setInterval(() => {
+      void loadChecklistSummary();
     }, 90000);
 
     return () => clearInterval(interval);
@@ -86,6 +122,31 @@ export default function ControlPanel() {
     };
   }, [visibleOrders]);
 
+  const checklistKpis = useMemo(() => {
+    const visible = isAdmin
+      ? checklists
+      : checklists.filter((entry) => entry.operator_id === user?.id);
+
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const pending = visible.filter((entry) => entry.status !== 'completed').length;
+    const completed = visible.filter((entry) => entry.status === 'completed').length;
+    const completedToday = visible.filter((entry) => {
+      if (entry.status !== 'completed') return false;
+      return toSafeDate(entry.date).getTime() >= startOfToday.getTime();
+    }).length;
+
+    const completionRate = visible.length > 0 ? (completed / visible.length) * 100 : 0;
+
+    return {
+      pending,
+      completed,
+      completedToday,
+      completionRate,
+    };
+  }, [checklists, isAdmin, user?.id]);
+
   return (
     <Layout>
       <div className="mb-8">
@@ -124,6 +185,45 @@ export default function ControlPanel() {
             <Timer size={18} className="text-violet-600" />
           </div>
           <p className="text-3xl font-bold text-slate-900">{kpis.avgCloseHours.toFixed(1)}h</p>
+        </div>
+      </div>
+
+      <div className="mb-8">
+        <h3 className="text-xl font-bold text-slate-900">Indicadores de Checklist Mensal</h3>
+        <p className="text-slate-500">Acompanhe pendências e desempenho das inspeções.</p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-7">
+        <div className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-medium text-slate-600">Checklists pendentes</p>
+            <AlertCircle size={18} className="text-amber-600" />
+          </div>
+          <p className="text-3xl font-bold text-slate-900">{checklistKpis.pending}</p>
+        </div>
+
+        <div className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-medium text-slate-600">Checklists concluídos</p>
+            <CheckCircle size={18} className="text-emerald-600" />
+          </div>
+          <p className="text-3xl font-bold text-slate-900">{checklistKpis.completed}</p>
+        </div>
+
+        <div className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-medium text-slate-600">Concluídos hoje</p>
+            <Calendar size={18} className="text-blue-600" />
+          </div>
+          <p className="text-3xl font-bold text-slate-900">{checklistKpis.completedToday}</p>
+        </div>
+
+        <div className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-medium text-slate-600">Taxa de conclusão</p>
+            <Timer size={18} className="text-violet-600" />
+          </div>
+          <p className="text-3xl font-bold text-slate-900">{checklistKpis.completionRate.toFixed(0)}%</p>
         </div>
       </div>
     </Layout>

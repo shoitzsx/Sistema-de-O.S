@@ -60,17 +60,17 @@ export default function TutorialCenter({ open, onClose, tutorials }: TutorialCen
   return (
     <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm">
           <motion.div
             initial={{ opacity: 0, y: 12, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.98 }}
-            className="w-full max-w-6xl max-h-[90vh] bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col"
+            className="w-full max-w-6xl h-[92vh] bg-white rounded-xl sm:rounded-2xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col"
           >
-            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+            <div className="bg-slate-900 text-white px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
               <div>
                 <p className="text-slate-300 text-xs uppercase tracking-wider">Ajuda e treinamento</p>
-                <h3 className="text-xl font-bold">Central de Tutoriais</h3>
+                <h3 className="text-lg sm:text-xl font-bold">Central de Tutoriais</h3>
               </div>
               <button
                 onClick={handleClose}
@@ -81,14 +81,15 @@ export default function TutorialCenter({ open, onClose, tutorials }: TutorialCen
               </button>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-[300px,1fr] flex-1 min-h-0">
-              <aside className="border-r border-slate-100 bg-slate-50 overflow-y-auto min-h-0">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+              <div className="grid grid-cols-1 lg:grid-cols-[300px,1fr] min-h-full">
+              <aside className="border-b lg:border-b-0 lg:border-r border-slate-100 bg-slate-50">
                 <div className="px-4 py-3 border-b border-slate-200">
                   <p className="text-sm font-semibold text-slate-800">Tutoriais disponíveis</p>
                   <p className="text-xs text-slate-500">Mostrando apenas os módulos permitidos para seu perfil.</p>
                 </div>
 
-                <div className="p-2 space-y-1">
+                <div className="p-2 space-y-1 max-h-56 lg:max-h-none overflow-y-auto">
                   {tutorials.length === 0 && (
                     <div className="text-sm text-slate-500 px-3 py-4">
                       Nenhum tutorial disponível para este usuário.
@@ -116,7 +117,7 @@ export default function TutorialCenter({ open, onClose, tutorials }: TutorialCen
                 </div>
               </aside>
 
-              <section className="p-6 overflow-y-auto min-h-0">
+              <section className="p-4 sm:p-6">
                 {activeTutorial ? (
                   <>
                     <div className="flex items-start gap-3 mb-6">
@@ -124,7 +125,7 @@ export default function TutorialCenter({ open, onClose, tutorials }: TutorialCen
                         <BookOpenCheck size={20} />
                       </div>
                       <div>
-                        <h4 className="text-2xl font-bold text-slate-900">{activeTutorial.title}</h4>
+                        <h4 className="text-xl sm:text-2xl font-bold text-slate-900">{activeTutorial.title}</h4>
                         <p className="text-slate-600 mt-1">{activeTutorial.description}</p>
                       </div>
                     </div>
@@ -162,6 +163,7 @@ export default function TutorialCenter({ open, onClose, tutorials }: TutorialCen
                   <div className="text-slate-500">Nenhum tutorial disponível.</div>
                 )}
               </section>
+              </div>
             </div>
           </motion.div>
         </div>

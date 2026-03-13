@@ -349,6 +349,18 @@ export function clearPermissionBlockedItems() {
   writeQueue(queue);
 }
 
+/** Remove lastError e reseta nextRetryAt de todos os itens com erro (sem deletar os dados pendentes). */
+export function clearAllQueueErrors() {
+  const queue = readQueue().map((op) => ({
+    ...op,
+    lastError: undefined,
+    attempts: 0,
+    nextRetryAt: nowMs(),
+    ...({ permissionBlocked: false } as any)
+  })) as QueueOperation[];
+  writeQueue(queue);
+}
+
 async function processOperation(op: QueueOperation) {
   if (op.type === 'insert') {
     const { data, error, status } = await supabase.from(op.table).insert([op.data]).select().single();
@@ -436,7 +448,7 @@ async function processOperation(op: QueueOperation) {
   }
 }
 
-export async function processOfflineSyncQueue() {
+export async function processOfflineSyncQueue(force = false) {
   if (!isBrowserOnline() || syncing) return;
 
   syncing = true;
@@ -449,9 +461,20 @@ export async function processOfflineSyncQueue() {
     const remaining: QueueOperation[] = [];
 
     for (const op of queue) {
-      if (op.nextRetryAt > now) {
+      const isBlocked = Boolean((op as any).permissionBlocked);
+
+      // Auto-sync: pula itens em backoff ou bloqueados por permissão.
+      if (!force && (op.nextRetryAt > now || isBlocked)) {
         remaining.push(op);
         continue;
+      }
+
+      // Sync manual (force): reseta flags de erro para tentar de novo.
+      if (force && isBlocked) {
+        (op as any).permissionBlocked = false;
+        op.attempts = 0;
+        op.nextRetryAt = nowMs();
+        op.lastError = undefined;
       }
 
       try {

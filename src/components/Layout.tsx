@@ -6,7 +6,7 @@ import { ToastContainer } from 'react-toastify';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { getOfflineChecklistSyncSummary, processChecklistSyncQueue } from '../lib/offlineChecklist';
-import { getOfflineSyncSummary, processOfflineSyncQueue, clearPermissionBlockedItems } from '../lib/offlineSync';
+import { getOfflineSyncSummary, processOfflineSyncQueue, clearAllQueueErrors } from '../lib/offlineSync';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
@@ -40,7 +40,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
     try {
       await Promise.all([
-        processOfflineSyncQueue(),
+        processOfflineSyncQueue(true),
         processChecklistSyncQueue()
       ]);
 
@@ -165,16 +165,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="flex items-center gap-2">
-            {syncInfo.blocked > 0 && (
+            {(syncInfo.error > 0 || syncInfo.blocked > 0) && !syncInfo.syncing && (
               <button
                 onClick={() => {
-                  clearPermissionBlockedItems();
+                  clearAllQueueErrors();
                   void refreshSyncInfo();
                 }}
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md border border-orange-400/40 text-orange-700 hover:bg-orange-50 transition-colors text-xs"
-                title="Remover da fila os itens bloqueados por permissão (RLS). Os dados permanecem salvos localmente."
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md border border-red-300/40 text-red-700 hover:bg-red-50 transition-colors text-xs"
+                title="Limpar erros da fila de sincronização. Os dados permanecem salvos localmente e serão reenviados."
               >
-                Limpar erros de permissão
+                Limpar erros
               </button>
             )}
             <button

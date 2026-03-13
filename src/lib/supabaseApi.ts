@@ -255,7 +255,7 @@ export async function createUser(user: Omit<User & { password: string }, 'id'>):
     return normalizeUser(data);
   } catch (err) {
     console.error('Erro ao criar usuário:', err);
-    return null;
+    throw err;
   }
 }
 
@@ -297,7 +297,7 @@ export async function updateUser(id: number, updates: Partial<User & { password?
     return normalizeUser(data);
   } catch (err) {
     console.error('Erro ao atualizar usuário:', err);
-    return null;
+    throw err;
   }
 }
 

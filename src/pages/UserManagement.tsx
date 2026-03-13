@@ -46,6 +46,7 @@ export default function UserManagement() {
 
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingUsername, setEditingUsername] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     loadUsers();
@@ -58,6 +59,8 @@ export default function UserManagement() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (isSaving) return;
     
     if (!newUser.name.trim() || !newUser.username.trim()) {
       toast.error('Preencha todos os campos obrigatórios');
@@ -70,6 +73,7 @@ export default function UserManagement() {
     }
 
     try {
+      setIsSaving(true);
       let result;
       
       if (editingId) {
@@ -113,7 +117,17 @@ export default function UserManagement() {
       }
     } catch (err) {
       console.error(err);
-      toast.error('Erro ao salvar usuário');
+      const apiError = err as { status?: number; code?: string; message?: string };
+
+      if (apiError?.status === 401 || apiError?.code === '42501') {
+        toast.error('Sem permissão para salvar usuário (RLS no Supabase). Execute a policy de INSERT/UPDATE na tabela users.');
+      } else if (apiError?.message) {
+        toast.error(`Erro ao salvar usuário: ${apiError.message}`);
+      } else {
+        toast.error('Erro ao salvar usuário');
+      }
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -458,9 +472,10 @@ export default function UserManagement() {
                     </button>
                     <button
                       type="submit"
-                      className="flex-1 px-4 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium transition shadow-lg shadow-emerald-600/20"
+                      disabled={isSaving}
+                      className="flex-1 px-4 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-medium transition shadow-lg shadow-emerald-600/20"
                     >
-                      {editingId ? 'Atualizar' : 'Criar'}
+                      {isSaving ? 'Salvando...' : editingId ? 'Atualizar' : 'Criar'}
                     </button>
                   </div>
                 </form>

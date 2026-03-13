@@ -6,7 +6,7 @@ import { ToastContainer } from 'react-toastify';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { getOfflineChecklistSyncSummary, processChecklistSyncQueue } from '../lib/offlineChecklist';
-import { getOfflineSyncSummary, processOfflineSyncQueue } from '../lib/offlineSync';
+import { getOfflineSyncSummary, processOfflineSyncQueue, clearPermissionBlockedItems } from '../lib/offlineSync';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
@@ -15,6 +15,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     online: true,
     pending: 0,
     error: 0,
+    blocked: 0,
     syncing: false,
     lastSyncAt: ''
   });
@@ -30,6 +31,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       online: globalSummary.online && checklistSummary.online,
       pending: globalSummary.pending + checklistSummary.pending,
       error: globalSummary.error + checklistSummary.error,
+      blocked: (globalSummary as any).blocked ?? 0,
     }));
   };
 
@@ -150,14 +152,31 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               {syncInfo.pending} pendente(s)
             </span>
             {syncInfo.error > 0 && (
-              <span className="text-red-700 font-semibold">{syncInfo.error} com erro</span>
+              <span className="text-red-600 font-semibold">{syncInfo.error} com erro</span>
+            )}
+            {syncInfo.blocked > 0 && (
+              <span className="text-orange-600 font-semibold" title="Itens bloqueados por falta de permissão no Supabase (RLS). Corrija as policies e sincronize novamente, ou limpe os erros.">
+                {syncInfo.blocked} bloqueado(s) por permissão
+              </span>
             )}
             {syncInfo.lastSyncAt && (
               <span className="hidden md:inline text-slate-600">Última sincronização: {syncInfo.lastSyncAt}</span>
             )}
           </div>
 
-          <div>
+          <div className="flex items-center gap-2">
+            {syncInfo.blocked > 0 && (
+              <button
+                onClick={() => {
+                  clearPermissionBlockedItems();
+                  void refreshSyncInfo();
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md border border-orange-400/40 text-orange-700 hover:bg-orange-50 transition-colors text-xs"
+                title="Remover da fila os itens bloqueados por permissão (RLS). Os dados permanecem salvos localmente."
+              >
+                Limpar erros de permissão
+              </button>
+            )}
             <button
               onClick={handleManualSync}
               disabled={syncInfo.syncing}

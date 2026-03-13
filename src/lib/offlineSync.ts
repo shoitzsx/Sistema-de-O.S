@@ -103,6 +103,18 @@ function getRetryDelay(attempts: number) {
   return Math.min(base * 2 ** attempts, max);
 }
 
+function isPermissionError(err: unknown): boolean {
+  const e = err as any;
+  if (e?.status === 401 || e?.status === 403 || e?.code === '42501') return true;
+  const msg = `${e?.message || ''} ${e?.details || ''}`.toLowerCase();
+  return (
+    msg.includes('row level security') ||
+    msg.includes('permission denied') ||
+    msg.includes('insufficient privilege') ||
+    msg.includes('jwt')
+  );
+}
+
 function getStorage() {
   if (typeof window === 'undefined') return null;
   return window.localStorage;
@@ -325,9 +337,16 @@ export function queueUpsertChecklistTemplate(machineModel: string, items: unknow
 
 export function getOfflineSyncSummary() {
   const queue = readQueue();
-  const pending = queue.length;
-  const error = queue.filter((op) => Boolean(op.lastError)).length;
-  return { pending, error, online: isBrowserOnline() };
+  const blocked = queue.filter((op) => Boolean((op as any).permissionBlocked)).length;
+  const active = queue.filter((op) => !Boolean((op as any).permissionBlocked));
+  const pending = active.length;
+  const error = active.filter((op) => Boolean(op.lastError)).length;
+  return { pending, error, blocked, online: isBrowserOnline() };
+}
+
+export function clearPermissionBlockedItems() {
+  const queue = readQueue().filter((op) => !Boolean((op as any).permissionBlocked));
+  writeQueue(queue);
 }
 
 async function processOperation(op: QueueOperation) {
@@ -430,12 +449,24 @@ export async function processOfflineSyncQueue() {
         await processOperation(op);
       } catch (error) {
         const attempts = op.attempts + 1;
-        remaining.push({
-          ...op,
-          attempts,
-          nextRetryAt: nowMs() + getRetryDelay(attempts),
-          lastError: error instanceof Error ? error.message : String(error)
-        });
+        if (isPermissionError(error)) {
+          // Erro de permissão permanente (RLS/401): não adianta retentar automaticamente.
+          // Marca como bloqueado para parar os retries até que a policy seja corrigida.
+          remaining.push({
+            ...op,
+            attempts,
+            nextRetryAt: nowMs() + 7 * 24 * 60 * 60 * 1000,
+            lastError: error instanceof Error ? error.message : String(error),
+            ...({ permissionBlocked: true } as any)
+          } as QueueOperation);
+        } else {
+          remaining.push({
+            ...op,
+            attempts,
+            nextRetryAt: nowMs() + getRetryDelay(attempts),
+            lastError: error instanceof Error ? error.message : String(error)
+          });
+        }
       }
     }
 

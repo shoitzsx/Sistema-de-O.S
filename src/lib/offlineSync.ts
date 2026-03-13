@@ -115,6 +115,35 @@ function isPermissionError(err: unknown): boolean {
   );
 }
 
+function isConflictError(err: unknown): boolean {
+  const e = err as any;
+  if (e?.status === 409 || e?.code === '23505') return true;
+  const msg = `${e?.message || ''} ${e?.details || ''}`.toLowerCase();
+  return msg.includes('duplicate key') || msg.includes('unique constraint');
+}
+
+async function reconcileUsersInsertConflict(op: Extract<QueueOperation, { type: 'insert' }>): Promise<boolean> {
+  if (op.entity !== 'users' || op.table !== 'users') return false;
+  const username = String((op.data as any)?.username || '').trim();
+  if (!username) return false;
+
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('username', username)
+    .maybeSingle();
+
+  if (error || !data?.id) return false;
+
+  if (op.tempId !== undefined) {
+    removeCachedRow<any>('users', op.tempId);
+    replaceQueuedTempId(op.tempId, Number(data.id));
+  }
+
+  upsertCachedRow('users', data as any);
+  return true;
+}
+
 function getStorage() {
   if (typeof window === 'undefined') return null;
   return window.localStorage;
@@ -365,6 +394,10 @@ async function processOperation(op: QueueOperation) {
   if (op.type === 'insert') {
     const { data, error, status } = await supabase.from(op.table).insert([op.data]).select().single();
     if (error) {
+      if (isConflictError({ ...error, status })) {
+        const resolved = await reconcileUsersInsertConflict(op);
+        if (resolved) return;
+      }
       const enriched = Object.assign(Object.create(Object.getPrototypeOf(error)), error, { status });
       throw enriched;
     }

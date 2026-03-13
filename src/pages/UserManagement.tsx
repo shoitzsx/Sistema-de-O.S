@@ -125,6 +125,8 @@ export default function UserManagement() {
 
       if (apiError?.status === 401 || apiError?.code === '42501') {
         toast.error('Sem permissão para salvar usuário (RLS no Supabase). Execute a policy de INSERT/UPDATE na tabela users.');
+      } else if (apiError?.status === 409 || apiError?.code === '23505') {
+        toast.error('Já existe um usuário com este login. Use outro nome de usuário.');
       } else if (apiError?.message) {
         toast.error(`Erro ao salvar usuário: ${apiError.message}`);
       } else {

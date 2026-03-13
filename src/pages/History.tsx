@@ -446,7 +446,7 @@ export default function History() {
           ? '-'
           : summary?.breakExceededLimit
           ? 'Sim'
-          : 'Nao',
+          : 'Não',
         order.status === 'closed' ? 'Finalizada' : 'Em Andamento',
         order.final_report || '-'
       ].map(field => escapeCsvField(field)).join(';');
@@ -481,7 +481,7 @@ export default function History() {
       <html>
         <head>
           <meta charset="utf-8" />
-          <title>Relatorio de OS</title>
+          <title>Relatório de OS</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 24px; color: #0f172a; }
             h1 { margin: 0 0 8px; }
@@ -999,7 +999,7 @@ export default function History() {
                         ? 'Ultrapassou o limite'
                         : breakSummaryByOrderId[order.id]?.breakExceededLimit === false
                         ? 'Dentro do limite'
-                        : 'Sem informacao de pausa'}
+                        : 'Sem informação de pausa'}
                     </p>
                   </div>
                   <div className="bg-slate-50 p-3 rounded-lg">

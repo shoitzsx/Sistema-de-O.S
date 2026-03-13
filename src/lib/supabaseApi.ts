@@ -126,7 +126,7 @@ function normalizeChecklistSchedule(raw: any, syncStatus: 'synced' | 'local-only
   return {
     id: raw.id,
     machine_id: Number(raw.machine_id),
-    machine_name: String(raw.machine_name || 'Maquina'),
+    machine_name: String(raw.machine_name || 'Máquina'),
     operator_id: Number(raw.operator_id),
     operator_name: String(raw.operator_name || 'Operador'),
     scheduled_date: String(raw.scheduled_date || new Date().toISOString().slice(0, 10)),

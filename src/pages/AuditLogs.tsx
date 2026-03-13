@@ -24,7 +24,7 @@ const actionLabels: Record<string, string> = {
   service_order_created: 'O.S criada',
   service_order_updated: 'O.S atualizada',
   service_order_closed: 'O.S finalizada',
-  service_order_deleted: 'O.S excluida',
+  service_order_deleted: 'O.S excluída',
 };
 
 const maintenanceTypeLabels: Record<string, string> = {
@@ -33,13 +33,13 @@ const maintenanceTypeLabels: Record<string, string> = {
 };
 
 const fieldLabels: Record<string, string> = {
-  final_report: 'relatorio final',
+  final_report: 'relatório final',
   tools: 'ferramentas',
   component: 'componente',
 };
 
 const entityTypeLabels: Record<string, string> = {
-  service_orders: 'Ordem de servico',
+  service_orders: 'Ordem de serviço',
 };
 
 const asText = (value: unknown): string => {
@@ -56,7 +56,7 @@ const formatAuditDetails = (row: AuditLogRow): string => {
     const component = asText(details.component);
     const maintenanceType = maintenanceTypeLabels[asText(details.maintenance_type)] || '';
     const parts = [
-      machineName ? `Maquina: ${machineName}` : '',
+      machineName ? `Máquina: ${machineName}` : '',
       component ? `Componente: ${component}` : '',
       maintenanceType ? `Tipo: ${maintenanceType}` : '',
     ].filter(Boolean);
@@ -78,11 +78,11 @@ const formatAuditDetails = (row: AuditLogRow): string => {
   if (row.action === 'service_order_closed') {
     const closedVia = asText(details.closed_via);
     const hasFinalReport = Boolean(details.has_final_report);
-    const viaText = closedVia === 'quick-action' ? 'Finalizada por acao rapida.' : 'O.S finalizada.';
+    const viaText = closedVia === 'quick-action' ? 'Finalizada por ação rápida.' : 'O.S finalizada.';
 
     return hasFinalReport
-      ? `${viaText} Relatorio final informado.`
-      : `${viaText} Sem relatorio final.`;
+      ? `${viaText} Relatório final informado.`
+      : `${viaText} Sem relatório final.`;
   }
 
   if (row.action === 'service_order_deleted') {
@@ -91,13 +91,13 @@ const formatAuditDetails = (row: AuditLogRow): string => {
     const reason = asText(details.reason);
 
     const modeText = mode === 'all'
-      ? 'Exclusao de todas as O.S.'
-      : `Exclusao seletiva (${selectedIds.length} O.S).`;
+      ? 'Exclusão de todas as O.S.'
+      : `Exclusão seletiva (${selectedIds.length} O.S).`;
 
     return reason ? `${modeText} Motivo: ${reason}` : modeText;
   }
 
-  return 'Acao registrada.';
+  return 'Ação registrada.';
 };
 
 export default function AuditLogs() {
@@ -212,7 +212,7 @@ export default function AuditLogs() {
   };
 
   const exportCsv = () => {
-    const headers = ['Data', 'Acao', 'Usuario', 'Perfil', 'Entidade', 'ID Entidade', 'Detalhes', 'Sincronizacao'];
+    const headers = ['Data', 'Ação', 'Usuário', 'Perfil', 'Entidade', 'ID Entidade', 'Detalhes', 'Sincronização'];
     const lines = filteredRows.map((row) => [
       formatDate(row.created_at),
       actionLabels[row.action] || row.action,
@@ -262,7 +262,7 @@ export default function AuditLogs() {
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
           <div>
             <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-              <ShieldCheck size={24} className="text-emerald-600" /> Auditoria de Acoes
+              <ShieldCheck size={24} className="text-emerald-600" /> Auditoria de Ações
             </h2>
             <p className="text-slate-500">Registros de criar, editar, finalizar e excluir O.S.</p>
           </div>
@@ -281,13 +281,13 @@ export default function AuditLogs() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Usuario, acao, detalhes, ID"
+            placeholder="Usuário, ação, detalhes, ID"
             className="w-full p-2.5 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-500"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Acao</label>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Ação</label>
           <select
             value={actionFilter}
             onChange={(e) => setActionFilter(e.target.value as typeof actionFilter)}
@@ -297,12 +297,12 @@ export default function AuditLogs() {
             <option value="service_order_created">O.S criada</option>
             <option value="service_order_updated">O.S atualizada</option>
             <option value="service_order_closed">O.S finalizada</option>
-            <option value="service_order_deleted">O.S excluida</option>
+            <option value="service_order_deleted">O.S excluída</option>
           </select>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Usuario</label>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Usuário</label>
           <select
             value={userFilter}
             onChange={(e) => setUserFilter(e.target.value)}
@@ -357,8 +357,8 @@ export default function AuditLogs() {
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
                 <th className="text-left text-xs font-semibold text-slate-600 px-4 py-3">Data</th>
-                <th className="text-left text-xs font-semibold text-slate-600 px-4 py-3">Acao</th>
-                <th className="text-left text-xs font-semibold text-slate-600 px-4 py-3">Usuario</th>
+                <th className="text-left text-xs font-semibold text-slate-600 px-4 py-3">Ação</th>
+                <th className="text-left text-xs font-semibold text-slate-600 px-4 py-3">Usuário</th>
                 <th className="text-left text-xs font-semibold text-slate-600 px-4 py-3">OS</th>
                 <th className="text-left text-xs font-semibold text-slate-600 px-4 py-3">Detalhes</th>
                 <th className="text-left text-xs font-semibold text-slate-600 px-4 py-3">Sync</th>

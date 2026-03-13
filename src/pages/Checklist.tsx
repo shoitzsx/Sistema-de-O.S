@@ -327,11 +327,11 @@ export default function Checklist() {
     if (localStorage.getItem(dedupeKey) === '1') return;
 
     if (dueToday.length > 0) {
-      toast.info(`Voce tem ${dueToday.length} checklist(s) agendado(s) para hoje.`);
+      toast.info(`Você tem ${dueToday.length} checklist(s) agendado(s) para hoje.`);
       if (typeof document !== 'undefined' && document.hidden) {
         showBrowserNotification(
           'Checklist Agendado',
-          `Voce tem ${dueToday.length} checklist(s) agendado(s) para hoje.`,
+          `Você tem ${dueToday.length} checklist(s) agendado(s) para hoje.`,
           { tag: `checklist-schedule-${user.id}`, navigateTo: '/checklist' }
         );
       }
@@ -340,7 +340,7 @@ export default function Checklist() {
     }
 
     if (upcomingCount > 0) {
-      toast.info(`Voce possui ${upcomingCount} checklist(s) agendado(s).`);
+      toast.info(`Você possui ${upcomingCount} checklist(s) agendado(s).`);
       localStorage.setItem(dedupeKey, '1');
     }
   }, [schedules, user, isAdmin]);
@@ -353,7 +353,7 @@ export default function Checklist() {
     const scheduledDate = scheduleForm.scheduled_date;
 
     if (!operatorId || !machineId || !scheduledDate) {
-      toast.error('Preencha operador, maquina e data do agendamento.');
+      toast.error('Preencha operador, máquina e data do agendamento.');
       return;
     }
 
@@ -361,7 +361,7 @@ export default function Checklist() {
     const machine = machines.find((item) => item.id === machineId);
 
     if (!operator || !machine) {
-      toast.error('Operador ou maquina invalida para agendamento.');
+      toast.error('Operador ou máquina inválida para agendamento.');
       return;
     }
 
@@ -379,7 +379,7 @@ export default function Checklist() {
       });
 
       if (!result) {
-        toast.error('Nao foi possivel criar o agendamento.');
+        toast.error('Não foi possível criar o agendamento.');
         return;
       }
 
@@ -894,7 +894,7 @@ export default function Checklist() {
               <div className="flex items-center justify-between gap-3 border-b border-emerald-200 pb-4 mb-4">
                 <div>
                   <h2 className="text-2xl md:text-3xl font-bold">Checklist Mensal - Modo TV</h2>
-                  <p className="text-slate-600 text-sm md:text-base">Visao de agendamentos para comunicacao com a equipe</p>
+                  <p className="text-slate-600 text-sm md:text-base">Visão de agendamentos para comunicação com a equipe</p>
                 </div>
                 <button
                   onClick={closeTvMode}
@@ -908,7 +908,7 @@ export default function Checklist() {
                 <div className="xl:col-span-8 flex flex-col gap-4 min-h-0">
                   <div className="bg-white border border-emerald-200 rounded-2xl p-4 md:p-5 flex flex-col min-h-0 shadow-sm">
                     <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg md:text-xl font-semibold">Calendario de Agendamentos</h3>
+                      <h3 className="text-lg md:text-xl font-semibold">Calendário de Agendamentos</h3>
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))}
@@ -1078,7 +1078,7 @@ export default function Checklist() {
                     onClick={openTemplateModal}
                     className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-5 py-2.5 rounded-xl shadow-lg shadow-emerald-600/20 flex items-center gap-2 transition-all"
                   >
-                    <Settings size={18} /> Cadastrar Inspecao
+                    <Settings size={18} /> Cadastrar Inspeção
                   </button>
                 )}
                 {isAdmin && (
@@ -1102,8 +1102,8 @@ export default function Checklist() {
                 </p>
                 <p className="text-xs text-slate-600">
                   {syncSummary.online
-                    ? 'Os checklists pendentes serao sincronizados automaticamente.'
-                    : 'Os checklists serao salvos no dispositivo e enviados ao reconectar.'}
+                    ? 'Os checklists pendentes serão sincronizados automaticamente.'
+                    : 'Os checklists serão salvos no dispositivo e enviados ao reconectar.'}
                 </p>
               </div>
             </div>
@@ -1111,10 +1111,10 @@ export default function Checklist() {
             <div className="bg-white border border-slate-200 rounded-2xl p-4 md:p-5 mb-6">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
                 <div>
-                  <h3 className="text-lg font-bold text-slate-900">Calendario de Agendamento de Checklist</h3>
+                  <h3 className="text-lg font-bold text-slate-900">Calendário de Agendamento de Checklist</h3>
                   <p className="text-sm text-slate-500">
                     {isAdmin
-                      ? 'Defina data, maquina e operador para o checklist mensal.'
+                      ? 'Defina data, máquina e operador para o checklist mensal.'
                       : 'Visualize seus agendamentos de checklist definidos pelo administrador.'}
                   </p>
                 </div>
@@ -1155,7 +1155,7 @@ export default function Checklist() {
                     onChange={(e) => setScheduleForm((prev) => ({ ...prev, machine_id: e.target.value }))}
                     className="md:col-span-1 p-2.5 border border-slate-200 rounded-lg"
                   >
-                    <option value="">Maquina</option>
+                    <option value="">Máquina</option>
                     {machines.map((machine) => (
                       <option key={machine.id} value={machine.id}>{machine.name}</option>
                     ))}
@@ -1171,7 +1171,7 @@ export default function Checklist() {
                   <input
                     value={scheduleForm.notes}
                     onChange={(e) => setScheduleForm((prev) => ({ ...prev, notes: e.target.value }))}
-                    placeholder="Observacao (opcional)"
+                    placeholder="Observação (opcional)"
                     className="md:col-span-1 p-2.5 border border-slate-200 rounded-lg"
                   />
 
@@ -1491,7 +1491,7 @@ export default function Checklist() {
           <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
             <div className="px-6 py-5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
               <div>
-                <h3 className="text-xl font-bold text-slate-900">Cadastro de Inspecao</h3>
+                <h3 className="text-xl font-bold text-slate-900">Cadastro de Inspeção</h3>
                 <p className="text-sm text-slate-500">Configure um template por modelo de equipamento</p>
               </div>
               <button onClick={closeTemplateModal} className="text-slate-500 hover:text-slate-700">
@@ -1502,7 +1502,7 @@ export default function Checklist() {
             <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-6 max-h-[75vh] overflow-y-auto">
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Modelo da maquina</label>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Modelo da máquina</label>
                   {!isNewModelMode ? (
                     <div className="flex gap-2">
                       <select
@@ -1622,7 +1622,7 @@ export default function Checklist() {
                 Cancelar
               </button>
               <button onClick={handleSaveTemplate} className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold">
-                Salvar Inspecao
+                Salvar Inspeção
               </button>
             </div>
           </div>

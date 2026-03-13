@@ -825,7 +825,7 @@ export default function ServiceOrders() {
 
     const currentBreak = orderBreaks[order.id];
     if (!currentBreak?.activeStartMs || !currentBreak?.activeEndMs) {
-      toast.info('Nao ha intervalo ativo para pausar.');
+      toast.info('Não há intervalo ativo para pausar.');
       return;
     }
 
@@ -866,7 +866,7 @@ export default function ServiceOrders() {
     const remainingMs = Math.max(0, Number(currentBreak?.pausedRemainingMs || 0));
 
     if (!remainingMs) {
-      toast.info('Nao ha intervalo pausado para retomar.');
+      toast.info('Não há intervalo pausado para retomar.');
       return;
     }
 
@@ -973,7 +973,7 @@ export default function ServiceOrders() {
       });
 
       if (!updated) {
-        toast.error('Nao foi possivel iniciar o trabalho nesta O.S.');
+        toast.error('Não foi possível iniciar o trabalho nesta O.S.');
         return;
       }
 
@@ -1125,7 +1125,7 @@ export default function ServiceOrders() {
 
     const header = [
       'id',
-      'maquina',
+      'máquina',
       'status',
       'tipo_manutencao',
       'responsavel',
@@ -1390,7 +1390,7 @@ export default function ServiceOrders() {
                         Iniciar trabalho
                       </button>
                       <p className="text-xs text-slate-500 max-w-[220px]">
-                        Ao iniciar, esta O.S sai da fila e fica atribuida a voce.
+                        Ao iniciar, esta O.S sai da fila e fica atribuída a você.
                       </p>
                     </>
                   )

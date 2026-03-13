@@ -181,7 +181,7 @@ export default function ControlPanel() {
 
         <div className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-medium text-slate-600">Tempo medio de fechamento</p>
+            <p className="text-sm font-medium text-slate-600">Tempo médio de fechamento</p>
             <Timer size={18} className="text-violet-600" />
           </div>
           <p className="text-3xl font-bold text-slate-900">{kpis.avgCloseHours.toFixed(1)}h</p>

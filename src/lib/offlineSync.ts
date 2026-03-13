@@ -351,8 +351,11 @@ export function clearPermissionBlockedItems() {
 
 async function processOperation(op: QueueOperation) {
   if (op.type === 'insert') {
-    const { data, error } = await supabase.from(op.table).insert([op.data]).select().single();
-    if (error) throw error;
+    const { data, error, status } = await supabase.from(op.table).insert([op.data]).select().single();
+    if (error) {
+      const enriched = Object.assign(Object.create(Object.getPrototypeOf(error)), error, { status });
+      throw enriched;
+    }
 
     if (op.tempId !== undefined && data?.id !== undefined) {
       replaceCachedTempId(op.entity, op.tempId, Number(data.id));
@@ -362,14 +365,20 @@ async function processOperation(op: QueueOperation) {
   }
 
   if (op.type === 'update') {
-    const { error } = await supabase.from(op.table).update(op.data).eq('id', op.targetId);
-    if (error) throw error;
+    const { error, status } = await supabase.from(op.table).update(op.data).eq('id', op.targetId);
+    if (error) {
+      const enriched = Object.assign(Object.create(Object.getPrototypeOf(error)), error, { status });
+      throw enriched;
+    }
     return;
   }
 
   if (op.type === 'delete') {
-    const { error } = await supabase.from(op.table).delete().eq('id', op.targetId);
-    if (error) throw error;
+    const { error, status } = await supabase.from(op.table).delete().eq('id', op.targetId);
+    if (error) {
+      const enriched = Object.assign(Object.create(Object.getPrototypeOf(error)), error, { status });
+      throw enriched;
+    }
     return;
   }
 

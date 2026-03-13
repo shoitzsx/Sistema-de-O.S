@@ -267,13 +267,21 @@ export async function createUser(user: Omit<User & { password: string }, 'id'>):
       return normalizeUser(localRow);
     }
 
-    const { data, error } = await supabase
+    const { data, error, status } = await supabase
       .from('users')
       .insert([userData])
       .select()
       .single();
 
-    if (error) throw error;
+    if (error || status === 401 || status === 403) {
+      if (status === 401 || status === 403 || (error && (error.code === '42501' || isWritePermissionError(error)))) {
+        const tempId = queueInsert('users', 'users', userData as any);
+        const localRow = { id: tempId, ...userData, sync_status: 'local-only' } as any;
+        upsertCachedRow('users', localRow);
+        return normalizeUser(localRow);
+      }
+      if (error) throw error;
+    }
 
     if (!data) return null;
 
@@ -316,14 +324,27 @@ export async function updateUser(id: number, updates: Partial<User & { password?
       return null;
     }
 
-    const { data, error } = await supabase
+    const { data, error, status } = await supabase
       .from('users')
       .update(updateData)
       .eq('id', id)
       .select()
       .single();
 
-    if (error) throw error;
+    if (error || status === 401 || status === 403) {
+      if (status === 401 || status === 403 || (error && (error.code === '42501' || isWritePermissionError(error)))) {
+        queueUpdate('users', 'users', id, updateData);
+        const cached = getCachedRows<any>('users');
+        const existing = cached.find((u) => u.id === id);
+        if (existing) {
+          const merged = { ...existing, ...updateData, sync_status: 'local-only' };
+          upsertCachedRow('users', merged);
+          return normalizeUser(merged);
+        }
+        return null;
+      }
+      if (error) throw error;
+    }
 
     if (!data) return null;
 
@@ -357,12 +378,20 @@ export async function deleteUser(id: number): Promise<boolean> {
       return true;
     }
 
-    const { error } = await supabase
+    const { error, status } = await supabase
       .from('users')
       .delete()
       .eq('id', id);
 
-    if (error) throw error;
+    if (error || status === 401 || status === 403) {
+      if (status === 401 || status === 403 || (error && (error.code === '42501' || isWritePermissionError(error)))) {
+        queueDelete('users', 'users', id);
+        removeCachedRow<any>('users', id);
+        return true;
+      }
+      if (error) throw error;
+    }
+
     removeCachedRow<any>('users', id);
     void processOfflineSyncQueue();
     return true;

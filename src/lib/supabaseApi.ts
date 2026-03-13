@@ -30,6 +30,21 @@ function safeParseJson<T>(value: unknown, fallback: T): T {
   }
 }
 
+function isWritePermissionError(err: unknown): boolean {
+  const apiError = err as { status?: number; code?: string; message?: string; details?: string };
+  if (apiError?.status === 401 || apiError?.status === 403 || apiError?.code === '42501') {
+    return true;
+  }
+
+  const rawMessage = `${apiError?.message || ''} ${apiError?.details || ''}`.toLowerCase();
+  return (
+    rawMessage.includes('row level security') ||
+    rawMessage.includes('permission denied') ||
+    rawMessage.includes('insufficient privilege') ||
+    rawMessage.includes('jwt')
+  );
+}
+
 function normalizeUser(user: any): User {
   return {
     ...user,
@@ -227,15 +242,15 @@ export async function getUsers(): Promise<User[]> {
 }
 
 export async function createUser(user: Omit<User & { password: string }, 'id'>): Promise<User | null> {
-  try {
-    const userData = {
-      ...user,
-      allowed_modules: JSON.stringify(user.allowed_modules || [])
-    };
+  const userData = {
+    ...user,
+    allowed_modules: JSON.stringify(user.allowed_modules || [])
+  };
 
+  try {
     if (!isBrowserOnline()) {
       const tempId = queueInsert('users', 'users', userData as any);
-      const localRow = { id: tempId, ...userData } as any;
+      const localRow = { id: tempId, ...userData, sync_status: 'local-only' } as any;
       upsertCachedRow('users', localRow);
       return normalizeUser(localRow);
     }
@@ -255,26 +270,34 @@ export async function createUser(user: Omit<User & { password: string }, 'id'>):
     return normalizeUser(data);
   } catch (err) {
     console.error('Erro ao criar usuário:', err);
+
+    if (isWritePermissionError(err)) {
+      const tempId = queueInsert('users', 'users', userData as any);
+      const localRow = { id: tempId, ...userData, sync_status: 'local-only' } as any;
+      upsertCachedRow('users', localRow);
+      return normalizeUser(localRow);
+    }
+
     throw err;
   }
 }
 
 export async function updateUser(id: number, updates: Partial<User & { password?: string }>): Promise<User | null> {
-  try {
-    const updateData: Record<string, unknown> = {};
-    
-    if (updates.name !== undefined) updateData.name = updates.name;
-    if (updates.username !== undefined) updateData.username = updates.username;
-    if (updates.password !== undefined) updateData.password = updates.password;
-    if (updates.role !== undefined) updateData.role = updates.role;
-    if (updates.allowed_modules !== undefined) updateData.allowed_modules = JSON.stringify(updates.allowed_modules || []);
+  const updateData: Record<string, unknown> = {};
+  
+  if (updates.name !== undefined) updateData.name = updates.name;
+  if (updates.username !== undefined) updateData.username = updates.username;
+  if (updates.password !== undefined) updateData.password = updates.password;
+  if (updates.role !== undefined) updateData.role = updates.role;
+  if (updates.allowed_modules !== undefined) updateData.allowed_modules = JSON.stringify(updates.allowed_modules || []);
 
+  try {
     if (!isBrowserOnline()) {
       queueUpdate('users', 'users', id, updateData);
       const cached = getCachedRows<any>('users');
       const existing = cached.find((u) => u.id === id);
       if (existing) {
-        const merged = { ...existing, ...updateData };
+        const merged = { ...existing, ...updateData, sync_status: 'local-only' };
         upsertCachedRow('users', merged);
         return normalizeUser(merged);
       }
@@ -297,6 +320,19 @@ export async function updateUser(id: number, updates: Partial<User & { password?
     return normalizeUser(data);
   } catch (err) {
     console.error('Erro ao atualizar usuário:', err);
+
+    if (isWritePermissionError(err)) {
+      queueUpdate('users', 'users', id, updateData);
+      const cached = getCachedRows<any>('users');
+      const existing = cached.find((u) => u.id === id);
+      if (existing) {
+        const merged = { ...existing, ...updateData, sync_status: 'local-only' };
+        upsertCachedRow('users', merged);
+        return normalizeUser(merged);
+      }
+      return null;
+    }
+
     throw err;
   }
 }
@@ -320,6 +356,13 @@ export async function deleteUser(id: number): Promise<boolean> {
     return true;
   } catch (err) {
     console.error('Erro ao deletar usuário:', err);
+
+    if (isWritePermissionError(err)) {
+      queueDelete('users', 'users', id);
+      removeCachedRow<any>('users', id);
+      return true;
+    }
+
     return false;
   }
 }

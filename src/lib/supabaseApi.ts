@@ -227,14 +227,26 @@ export async function getUsers(): Promise<User[]> {
   }
 
   try {
+    const cachedUsers = getCachedRows<any>('users');
+    const localOnlyUsers = cachedUsers.filter((u) => {
+      const id = Number((u as any).id);
+      return id < 0 || (u as any).sync_status === 'local-only';
+    });
+
     const { data, error } = await supabase
       .from('users')
       .select('*');
 
     if (error) throw error;
 
-    setCachedRows('users', data || []);
-    return (data || []).map(normalizeUser);
+    const remoteRows = data || [];
+    const mergedRows = [...remoteRows, ...localOnlyUsers.filter((local) => {
+      const localUsername = String((local as any).username || '').toLowerCase();
+      return !remoteRows.some((remote) => String((remote as any).username || '').toLowerCase() === localUsername);
+    })];
+
+    setCachedRows('users', mergedRows as any[]);
+    return mergedRows.map(normalizeUser);
   } catch (err) {
     console.error('Erro ao buscar usuários:', err);
     return getCachedRows<any>('users').map(normalizeUser);

@@ -111,7 +111,11 @@ export default function UserManagement() {
         loadUsers();
         resetForm();
         setIsModalOpen(false);
-        toast.success(editingId ? 'Usuário atualizado com sucesso!' : 'Usuário criado com sucesso!');
+        if ((result as any)?.sync_status === 'local-only') {
+          toast.warn('Usuário salvo localmente (pendente de sincronização com o servidor).');
+        } else {
+          toast.success(editingId ? 'Usuário atualizado com sucesso!' : 'Usuário criado com sucesso!');
+        }
       } else {
         toast.error('Erro ao salvar usuário');
       }

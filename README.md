@@ -85,20 +85,6 @@ src/
 ├── lib/           # Supabase client e API wrapper
 └── context/       # Context de autenticação
 ```
-
----
-
-## 🔑 Usuários Demo
-
-| Usuário | Senha | Papel |
-|---------|-------|-------|
-| admin | admin123 | Admin |
-| joao | 1234 | Operador |
-| maria | 1234 | Operador |
-| pedro | 1234 | Operador |
-
----
-
 ## ⚡ Comandos
 
 ```bash

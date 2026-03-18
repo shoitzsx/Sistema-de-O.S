@@ -111,6 +111,7 @@ export const LoginNumeric: React.FC<LoginNumericProps> = ({
               readOnly={useNumpad}
               autoFocus={!useNumpad}
               showClearButton={!useNumpad && password.length > 0}
+              showVisibilityToggle={!useNumpad}
               className="pl-12 sm:pl-14"
               onKeyDown={!useNumpad ? handleKeyDown : undefined}
             />

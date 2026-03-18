@@ -12,6 +12,18 @@ body {
 	-webkit-text-size-adjust: 100%;
 }
 
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+	display: none;
+}
+
+input[type="password"]::-webkit-credentials-auto-fill-button,
+input[type="password"]::-webkit-textfield-decoration-container {
+	display: none !important;
+	visibility: hidden;
+	pointer-events: none;
+}
+
 .ui-scrollbar {
 	scrollbar-width: thin;
 	scrollbar-color: #94a3b8 transparent;

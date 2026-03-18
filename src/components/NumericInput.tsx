@@ -1,5 +1,5 @@
-import React, { useRef } from 'react';
-import { X } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { Eye, EyeOff, X } from 'lucide-react';
 
 export interface NumericInputProps {
   value: string;
@@ -15,6 +15,7 @@ export interface NumericInputProps {
   autoFocus?: boolean;
   className?: string;
   showClearButton?: boolean;
+  showVisibilityToggle?: boolean;
 }
 
 /**
@@ -44,11 +45,13 @@ export const NumericInput = React.forwardRef<HTMLInputElement, NumericInputProps
       autoFocus = false,
       className = '',
       showClearButton = false,
+      showVisibilityToggle = false,
     },
     ref
   ) => {
     const internalRef = useRef<HTMLInputElement>(null);
     const inputRef = ref || internalRef;
+    const [isPasswordVisible, setIsPasswordVisible] = useState(false);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       let newValue = e.target.value;
@@ -115,8 +118,16 @@ export const NumericInput = React.forwardRef<HTMLInputElement, NumericInputProps
       }
     };
 
+    const handleToggleVisibility = () => {
+      setIsPasswordVisible((current) => !current);
+      if (inputRef && typeof inputRef !== 'function') {
+        inputRef.current?.focus();
+      }
+    };
+
     const displayValue = maskInput && readOnly ? '•'.repeat(value.length) : value;
-    const inputType = maskInput && !readOnly ? 'password' : 'text';
+    const inputType = maskInput && !readOnly && !isPasswordVisible ? 'password' : 'text';
+    const hasActionButtons = showClearButton || (showVisibilityToggle && maskInput && !readOnly);
 
     return (
       <div className="relative w-full">
@@ -144,6 +155,7 @@ export const NumericInput = React.forwardRef<HTMLInputElement, NumericInputProps
             focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 focus:shadow-md
             outline-none
             disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed
+            ${hasActionButtons ? 'pr-24 sm:pr-28' : ''}
             ${readOnly ? 'bg-slate-50 cursor-default' : 'bg-white'}
             ${className}
           `}
@@ -153,16 +165,38 @@ export const NumericInput = React.forwardRef<HTMLInputElement, NumericInputProps
           autoCapitalize="off"
         />
 
-        {showClearButton && value && (
-          <button
-            type="button"
-            onClick={handleClear}
-            disabled={disabled}
-            className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-            aria-label="Limpar input"
-          >
-            <X size={18} className="sm:w-5 sm:h-5" />
-          </button>
+        {hasActionButtons && (
+          <div className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 flex items-center gap-1 sm:gap-2">
+            {showVisibilityToggle && maskInput && !readOnly && (
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={handleToggleVisibility}
+                disabled={disabled}
+                className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
+                aria-label={isPasswordVisible ? 'Ocultar senha' : 'Mostrar senha'}
+              >
+                {isPasswordVisible ? (
+                  <EyeOff size={18} className="sm:w-5 sm:h-5" />
+                ) : (
+                  <Eye size={18} className="sm:w-5 sm:h-5" />
+                )}
+              </button>
+            )}
+
+            {showClearButton && value && (
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={handleClear}
+                disabled={disabled}
+                className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                aria-label="Limpar input"
+              >
+                <X size={18} className="sm:w-5 sm:h-5" />
+              </button>
+            )}
+          </div>
         )}
       </div>
     );

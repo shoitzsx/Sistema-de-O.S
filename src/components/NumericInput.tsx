@@ -114,7 +114,7 @@ export const NumericInput = React.forwardRef<HTMLInputElement, NumericInputProps
     const displayValue = maskInput ? '•'.repeat(value.length) : value;
 
     return (
-      <div className="relative">
+      <div className="relative w-full">
         <input
           ref={inputRef}
           type="text"
@@ -132,17 +132,18 @@ export const NumericInput = React.forwardRef<HTMLInputElement, NumericInputProps
           readOnly={readOnly}
           autoFocus={autoFocus}
           className={`
-            w-full px-4 py-3 rounded-lg border border-slate-200
-            focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200
-            outline-none transition-all
+            w-full px-4 sm:px-5 py-3 sm:py-4 
+            text-lg sm:text-xl font-semibold tracking-widest letter-spacing-2
+            rounded-xl sm:rounded-2xl border-2 border-slate-200
+            shadow-sm hover:shadow-md transition-all duration-200
+            focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 focus:shadow-md
+            outline-none
             disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed
             ${readOnly ? 'bg-slate-50 cursor-default' : 'bg-white'}
-            text-lg font-semibold tracking-widest letter-spacing-2
             ${className}
           `}
           autoComplete="off"
           spellCheck={false}
-          // Desabilitar autocorrect no iOS
           autoCorrect="off"
           autoCapitalize="off"
         />
@@ -152,10 +153,10 @@ export const NumericInput = React.forwardRef<HTMLInputElement, NumericInputProps
             type="button"
             onClick={handleClear}
             disabled={disabled}
-            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-red-500 transition-colors"
+            className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
             aria-label="Limpar input"
           >
-            <X size={18} />
+            <X size={18} className="sm:w-5 sm:h-5" />
           </button>
         )}
       </div>

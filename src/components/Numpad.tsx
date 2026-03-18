@@ -94,15 +94,15 @@ export const Numpad: React.FC<NumpadProps> = ({
 
   return (
     <div
-      className={`numpad-container p-4 bg-gradient-to-b from-slate-50 to-slate-100 rounded-2xl ${className}`}
+      className={`numpad-container p-3 sm:p-4 bg-gradient-to-b from-emerald-50 via-white to-slate-50 rounded-2xl sm:rounded-3xl border border-emerald-100 shadow-lg ${className}`}
       onKeyDown={handleKeyDown}
       role="region"
       aria-label="Teclado numérico"
     >
-      {/* Grid de números */}
-      <div className="grid gap-2 mb-3">
+      {/* Grid de números - Responsivo */}
+      <div className="grid gap-2 sm:gap-3 mb-3 sm:mb-4">
         {numberButtons.map((row, rowIdx) => (
-          <div key={rowIdx} className="grid gap-2" style={{ gridTemplateColumns: `repeat(3, 1fr)` }}>
+          <div key={rowIdx} className="grid gap-2 sm:gap-3" style={{ gridTemplateColumns: `repeat(3, 1fr)` }}>
             {row.map((num) => (
               <motion.button
                 key={num}
@@ -113,15 +113,16 @@ export const Numpad: React.FC<NumpadProps> = ({
                 onClick={() => handleNumberClick(num)}
                 disabled={disabled}
                 className={`
-                  py-4 px-2 text-2xl font-bold rounded-xl transition-all
+                  py-3 sm:py-5 px-2 sm:px-3 text-xl sm:text-3xl font-bold 
+                  rounded-lg sm:rounded-2xl transition-all duration-200
                   ${
                     pressedKey === num.toString()
-                      ? 'bg-emerald-600 text-white shadow-lg'
-                      : 'bg-white text-slate-900 shadow-md hover:shadow-lg'
+                      ? 'bg-emerald-600 text-white shadow-lg scale-95'
+                      : 'bg-white text-slate-900 shadow-md hover:shadow-xl'
                   }
                   disabled:opacity-50 disabled:cursor-not-allowed
-                  border border-slate-200 hover:border-emerald-500
-                  active:shadow-inner
+                  border-2 border-slate-200 hover:border-emerald-500
+                  active:shadow-inner active:scale-95
                 `}
                 aria-label={`Número ${num}`}
               >
@@ -133,7 +134,7 @@ export const Numpad: React.FC<NumpadProps> = ({
       </div>
 
       {/* Botões de ação: Apagar, Limpar Tudo, Enviar */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
         {/* Botão Apagar */}
         <motion.button
           type="button"
@@ -143,19 +144,19 @@ export const Numpad: React.FC<NumpadProps> = ({
           onClick={handleBackspace}
           disabled={disabled || value.length === 0}
           className={`
-            py-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-2
+            py-3 sm:py-4 rounded-lg sm:rounded-xl font-semibold transition-all duration-200
+            flex items-center justify-center gap-1 sm:gap-2 text-sm sm:text-base
             ${
               pressedKey === 'Backspace'
-                ? 'bg-orange-500 text-white shadow-lg'
-                : 'bg-white text-slate-700 shadow-md hover:shadow-lg'
+                ? 'bg-orange-500 text-white shadow-lg scale-95'
+                : 'bg-orange-50 text-orange-700 shadow-md hover:shadow-xl border-2 border-orange-200'
             }
             disabled:opacity-50 disabled:cursor-not-allowed
-            border border-slate-200 hover:border-orange-500
-            active:shadow-inner
+            active:shadow-inner active:scale-95
           `}
           aria-label="Apagar último dígito"
         >
-          <Delete size={18} />
+          <Delete size={18} className="sm:w-5 sm:h-5" />
           <span className="hidden sm:inline">Apagar</span>
         </motion.button>
 
@@ -169,19 +170,19 @@ export const Numpad: React.FC<NumpadProps> = ({
             onClick={handleClearAll}
             disabled={disabled || value.length === 0}
             className={`
-              py-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-2
+              py-3 sm:py-4 rounded-lg sm:rounded-xl font-semibold transition-all duration-200
+              flex items-center justify-center gap-1 sm:gap-2 text-sm sm:text-base
               ${
                 pressedKey === 'Clear'
-                  ? 'bg-red-500 text-white shadow-lg'
-                  : 'bg-white text-slate-700 shadow-md hover:shadow-lg'
+                  ? 'bg-red-500 text-white shadow-lg scale-95'
+                  : 'bg-red-50 text-red-700 shadow-md hover:shadow-xl border-2 border-red-200'
               }
               disabled:opacity-50 disabled:cursor-not-allowed
-              border border-slate-200 hover:border-red-500
-              active:shadow-inner
+              active:shadow-inner active:scale-95
             `}
             aria-label="Limpar todos os dígitos"
           >
-            <RotateCcw size={18} />
+            <RotateCcw size={18} className="sm:w-5 sm:h-5" />
             <span className="hidden sm:inline">Limpar</span>
           </motion.button>
         )}
@@ -196,15 +197,15 @@ export const Numpad: React.FC<NumpadProps> = ({
             onClick={onSubmit}
             disabled={disabled || value.length === 0}
             className={`
-              py-3 rounded-xl font-semibold transition-all col-span-${showClearAll ? '1' : '2'}
+              py-3 sm:py-4 rounded-lg sm:rounded-xl font-semibold transition-all duration-200
+              text-sm sm:text-base ${showClearAll ? 'col-span-1' : 'col-span-2'}
               ${
                 pressedKey === 'Enter'
-                  ? 'bg-emerald-700 text-white shadow-lg'
-                  : 'bg-emerald-600 text-white shadow-md hover:shadow-lg hover:bg-emerald-700'
+                  ? 'bg-emerald-700 text-white shadow-lg scale-95'
+                  : 'bg-emerald-600 text-white shadow-md hover:shadow-xl hover:bg-emerald-700 border-2 border-emerald-700'
               }
-              disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-300
-              border border-emerald-700 
-              active:shadow-inner
+              disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:border-slate-300
+              active:shadow-inner active:scale-95
             `}
             aria-label={submitButtonLabel}
           >
@@ -214,13 +215,13 @@ export const Numpad: React.FC<NumpadProps> = ({
       </div>
 
       {/* Indicador visual do input */}
-      <div className="mt-4 p-3 bg-white rounded-lg border border-slate-200">
-        <div className="text-xs text-slate-500 mb-1 font-medium">Entrada:</div>
-        <div className="text-2xl font-bold text-slate-900 tracking-widest letter-spacing-2">
-          {'•'.repeat(value.length) || <span className="text-slate-400">-</span>}
+      <div className="mt-3 sm:mt-4 p-3 sm:p-4 bg-emerald-50 rounded-lg sm:rounded-xl border-2 border-emerald-200 shadow-sm">
+        <div className="text-xs text-emerald-700 mb-2 font-semibold uppercase tracking-wide">Entrada:</div>
+        <div className="text-2xl sm:text-3xl font-bold text-emerald-900 tracking-widest letter-spacing-2 min-h-8">
+          {'•'.repeat(value.length) || <span className="text-emerald-400">-</span>}
         </div>
-        <div className="text-xs text-slate-400 mt-1">
-          {value.length} / {maxLength}
+        <div className="text-xs text-emerald-600 mt-2 font-medium">
+          {value.length} / {maxLength} caractere{value.length !== 1 ? 's' : ''}
         </div>
       </div>
     </div>

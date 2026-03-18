@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useRef } from 'react';
 import { X } from 'lucide-react';
 
 export interface NumericInputProps {
@@ -6,6 +6,7 @@ export interface NumericInputProps {
   onChange: (value: string) => void;
   onFocus?: () => void;
   onBlur?: () => void;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
   placeholder?: string;
   maxLength?: number;
   maskInput?: boolean; // Mostrar * ao invés do número (para PIN/senha)
@@ -34,6 +35,7 @@ export const NumericInput = React.forwardRef<HTMLInputElement, NumericInputProps
       onChange,
       onFocus,
       onBlur,
+      onKeyDown,
       placeholder = 'Digite um número',
       maxLength = 20,
       maskInput = false,
@@ -77,6 +79,8 @@ export const NumericInput = React.forwardRef<HTMLInputElement, NumericInputProps
       if (!isNumeric && !isControlKey) {
         e.preventDefault();
       }
+
+      onKeyDown?.(e);
     };
 
     const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
@@ -111,13 +115,14 @@ export const NumericInput = React.forwardRef<HTMLInputElement, NumericInputProps
       }
     };
 
-    const displayValue = maskInput ? '•'.repeat(value.length) : value;
+    const displayValue = maskInput && readOnly ? '•'.repeat(value.length) : value;
+    const inputType = maskInput && !readOnly ? 'password' : 'text';
 
     return (
       <div className="relative w-full">
         <input
           ref={inputRef}
-          type="text"
+          type={inputType}
           inputMode="numeric"
           value={displayValue}
           onChange={handleChange}

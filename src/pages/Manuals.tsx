@@ -173,6 +173,7 @@ function ManualViewerModal({ machine, onClose, onCacheReady }: ManualViewerModal
     : isTablet
     ? 'mx-auto flex h-full w-full max-w-5xl flex-col gap-4'
     : 'flex h-full w-full flex-col gap-3';
+  const useDedicatedReader = (isMobile || isTablet) && canRenderInline && Boolean(viewerSrc);
 
   return (
     <div className={`fixed inset-0 z-[70] bg-slate-950/70 backdrop-blur-sm ${overlayPaddingClass}`} onClick={onClose}>
@@ -247,6 +248,34 @@ function ManualViewerModal({ machine, onClose, onCacheReady }: ManualViewerModal
                 <div className="flex flex-col items-center gap-3 text-slate-500">
                   <LoaderCircle size={28} className="animate-spin" />
                   <p className="text-sm font-medium">Preparando manual para leitura...</p>
+                </div>
+              </div>
+            ) : useDedicatedReader ? (
+              <div className="flex min-h-[48vh] flex-1 flex-col items-center justify-center rounded-3xl border border-slate-200 bg-white px-6 py-8 text-center">
+                <BookOpen size={34} className="mb-3 text-emerald-600" />
+                <h4 className="text-lg font-semibold text-slate-800">Leitura completa no dispositivo</h4>
+                <p className="mt-2 max-w-xl text-sm leading-relaxed text-slate-500">
+                  Em celular e tablet, o leitor interno pode limitar a rolagem do PDF.
+                  Use o botão abaixo para abrir o manual em tela cheia e navegar por todas as páginas, inclusive offline.
+                </p>
+                <div className="mt-5 flex flex-wrap justify-center gap-3">
+                  <a
+                    href={viewerSrc || undefined}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-700"
+                  >
+                    <ExternalLink size={16} /> Abrir leitura completa
+                  </a>
+                  {downloadSrc && (
+                    <a
+                      href={downloadSrc}
+                      download={fileName}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100"
+                    >
+                      <Download size={16} /> Baixar PDF
+                    </a>
+                  )}
                 </div>
               </div>
             ) : canRenderInline && viewerSrc ? (

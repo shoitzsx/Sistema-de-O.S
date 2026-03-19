@@ -44,6 +44,7 @@ interface HoveredHistoryPoint {
   count: number;
   x: number;
   y: number;
+  index: number;
 }
 
 export default function ControlPanel() {
@@ -198,7 +199,7 @@ export default function ControlPanel() {
   }, [maintenanceHistory]);
 
   const chartGeometry = useMemo(() => {
-    const width = 940;
+    const width = Math.max(860, maintenanceHistory.length * 44);
     const height = 280;
     const paddingLeft = 42;
     const paddingRight = 20;
@@ -213,7 +214,7 @@ export default function ControlPanel() {
     const points = maintenanceHistory.map((item, index) => {
       const x = paddingLeft + (index / segments) * plotWidth;
       const y = paddingTop + (1 - item.count / maxValue) * plotHeight;
-      return { ...item, x, y };
+      return { ...item, x, y, index };
     });
 
     const linePath = points
@@ -226,6 +227,9 @@ export default function ControlPanel() {
       return { value, y };
     });
 
+    const maxVisibleLabels = width >= 1100 ? 12 : 9;
+    const labelStep = Math.max(1, Math.ceil(maintenanceHistory.length / maxVisibleLabels));
+
     return {
       width,
       height,
@@ -237,6 +241,7 @@ export default function ControlPanel() {
       points,
       linePath,
       yTicks,
+      labelStep,
     };
   }, [maintenanceHistory]);
 
@@ -358,10 +363,10 @@ export default function ControlPanel() {
           </div>
         </div>
 
-        <div className="w-full overflow-x-auto">
+        <div className="w-full overflow-x-auto pb-1" style={{ WebkitOverflowScrolling: 'touch' }}>
           <svg
             viewBox={`0 0 ${chartGeometry.width} ${chartGeometry.height}`}
-            className="min-w-[760px] w-full h-auto"
+            className="w-auto min-w-full h-auto"
             onMouseLeave={() => {
               if (!isHistoryTooltipPinned) {
                 setHoveredHistoryPoint(null);
@@ -461,7 +466,9 @@ export default function ControlPanel() {
                   className="fill-slate-600"
                   style={{ fontSize: '12px' }}
                 >
-                  {point.label}
+                  {point.index % chartGeometry.labelStep === 0 || point.index === chartGeometry.points.length - 1
+                    ? point.label
+                    : ''}
                 </text>
               </g>
             ))}

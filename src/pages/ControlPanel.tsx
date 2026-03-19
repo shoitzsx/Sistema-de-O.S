@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, AlertCircle, AlertTriangle, Calendar, CheckCircle, CheckCircle2, Timer, TrendingUp, Maximize2, X } from 'lucide-react';
+import { Activity, AlertCircle, AlertTriangle, Calendar, CheckCircle, CheckCircle2, Timer, TrendingUp } from 'lucide-react';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
 import { getChecklists, getServiceOrders } from '../lib/supabaseApi';
@@ -55,7 +55,6 @@ export default function ControlPanel() {
   const [historyRange, setHistoryRange] = useState<HistoryRange>(30);
   const [hoveredHistoryPoint, setHoveredHistoryPoint] = useState<HoveredHistoryPoint | null>(null);
   const [isHistoryTooltipPinned, setIsHistoryTooltipPinned] = useState(false);
-  const [isChartExpanded, setIsChartExpanded] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -326,36 +325,24 @@ export default function ControlPanel() {
             <p className="text-slate-500 text-sm">Ordens de serviço criadas por dia no período selecionado</p>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="inline-flex bg-slate-100 rounded-lg p-1">
-              {([
-                { label: '7 dias', value: 7 },
-                { label: '15 dias', value: 15 },
-                { label: '30 dias', value: 30 },
-              ] as Array<{ label: string; value: HistoryRange }>).map((option) => (
-                <button
-                  key={option.value}
-                  onClick={() => setHistoryRange(option.value)}
-                  className={`px-3 py-1.5 text-sm font-semibold rounded-md transition-colors ${
-                    historyRange === option.value
-                      ? 'bg-white text-emerald-700 shadow-sm'
-                      : 'text-slate-600 hover:text-slate-800'
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-
-            <button
-              onClick={() => setIsChartExpanded(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
-              title="Expandir gráfico"
-              aria-label="Expandir gráfico para tela cheia"
-            >
-              <Maximize2 size={16} />
-              <span className="hidden sm:inline">Expandir</span>
-            </button>
+          <div className="inline-flex bg-slate-100 rounded-lg p-1 self-start">
+            {([
+              { label: '7 dias', value: 7 },
+              { label: '15 dias', value: 15 },
+              { label: '30 dias', value: 30 },
+            ] as Array<{ label: string; value: HistoryRange }>).map((option) => (
+              <button
+                key={option.value}
+                onClick={() => setHistoryRange(option.value)}
+                className={`px-3 py-1.5 text-sm font-semibold rounded-md transition-colors ${
+                  historyRange === option.value
+                    ? 'bg-white text-emerald-700 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-800'
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -380,7 +367,6 @@ export default function ControlPanel() {
           <svg
             viewBox={`0 0 ${chartGeometry.width} ${chartGeometry.height}`}
             className="w-auto min-w-full h-auto"
-            style={{ minHeight: '360px' }}
             onMouseLeave={() => {
               if (!isHistoryTooltipPinned) {
                 setHoveredHistoryPoint(null);
@@ -525,218 +511,6 @@ export default function ControlPanel() {
           </svg>
         </div>
       </div>
-
-      {isChartExpanded && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setIsChartExpanded(false)}>
-          <div
-            className="bg-white rounded-2xl w-full h-full md:h-auto md:max-h-[90vh] md:max-w-6xl overflow-hidden flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between p-6 border-b border-slate-100">
-              <h3 className="text-2xl font-bold text-slate-900">Histórico de Manutenção</h3>
-              <button
-                onClick={() => setIsChartExpanded(false)}
-                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-                aria-label="Fechar gráfico expandido"
-              >
-                <X size={24} />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-auto p-6 flex flex-col">
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
-                <div>
-                  <p className="text-slate-500">Ordens de serviço criadas por dia no período selecionado</p>
-                </div>
-
-                <div className="inline-flex bg-slate-100 rounded-lg p-1">
-                  {([
-                    { label: '7 dias', value: 7 },
-                    { label: '15 dias', value: 15 },
-                    { label: '30 dias', value: 30 },
-                  ] as Array<{ label: string; value: HistoryRange }>).map((option) => (
-                    <button
-                      key={option.value}
-                      onClick={() => setHistoryRange(option.value)}
-                      className={`px-3 py-1.5 text-sm font-semibold rounded-md transition-colors ${
-                        historyRange === option.value
-                          ? 'bg-white text-emerald-700 shadow-sm'
-                          : 'text-slate-600 hover:text-slate-800'
-                      }`}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
-                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Total no período</p>
-                  <p className="text-2xl font-bold text-slate-900">{maintenanceHistorySummary.total}</p>
-                </div>
-                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Média por dia</p>
-                  <p className="text-2xl font-bold text-slate-900">{maintenanceHistorySummary.averagePerDay.toFixed(1)}</p>
-                </div>
-                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Dia de pico</p>
-                  <p className="text-2xl font-bold text-slate-900">
-                    {maintenanceHistorySummary.peak.label} <span className="text-base text-slate-600">({maintenanceHistorySummary.peak.count})</span>
-                  </p>
-                </div>
-              </div>
-
-              <div className="w-full overflow-x-auto flex-1 flex items-center" style={{ WebkitOverflowScrolling: 'touch' }}>
-                <svg
-                  viewBox={`0 0 ${chartGeometry.width} ${chartGeometry.height}`}
-                  className="w-auto h-auto"
-                  style={{ minHeight: '500px', margin: '0 auto' }}
-                  onMouseLeave={() => {
-                    if (!isHistoryTooltipPinned) {
-                      setHoveredHistoryPoint(null);
-                    }
-                  }}
-                  onClick={() => {
-                    if (isHistoryTooltipPinned) {
-                      setHoveredHistoryPoint(null);
-                      setIsHistoryTooltipPinned(false);
-                    }
-                  }}
-                >
-                  {chartGeometry.yTicks.map((tick) => (
-                    <g key={`tick-expanded-${tick.value}-${tick.y}`}>
-                      <line
-                        x1={chartGeometry.paddingLeft}
-                        y1={tick.y}
-                        x2={chartGeometry.paddingLeft + chartGeometry.plotWidth}
-                        y2={tick.y}
-                        stroke="#e2e8f0"
-                        strokeDasharray="4 4"
-                      />
-                      <text
-                        x={chartGeometry.paddingLeft - 10}
-                        y={tick.y + 4}
-                        textAnchor="end"
-                        className="fill-slate-500"
-                        style={{ fontSize: '14px' }}
-                      >
-                        {tick.value}
-                      </text>
-                    </g>
-                  ))}
-
-                  <path d={chartGeometry.linePath} fill="none" stroke="#059669" strokeWidth={4} strokeLinecap="round" strokeLinejoin="round" />
-
-                  {hoveredHistoryPoint && (
-                    <line
-                      x1={hoveredHistoryPoint.x}
-                      y1={chartGeometry.paddingTop}
-                      x2={hoveredHistoryPoint.x}
-                      y2={chartGeometry.height - chartGeometry.paddingBottom}
-                      stroke="#94a3b8"
-                      strokeWidth={2}
-                    />
-                  )}
-
-                  {chartGeometry.points.map((point) => (
-                    <g
-                      key={`expanded-${point.key}`}
-                      onMouseEnter={() => {
-                        if (!isHistoryTooltipPinned) {
-                          setHoveredHistoryPoint(point);
-                        }
-                      }}
-                      onMouseMove={() => {
-                        if (!isHistoryTooltipPinned) {
-                          setHoveredHistoryPoint(point);
-                        }
-                      }}
-                      onMouseLeave={() => {
-                        if (!isHistoryTooltipPinned) {
-                          setHoveredHistoryPoint((current) => (current?.key === point.key ? null : current));
-                        }
-                      }}
-                      onTouchStart={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-
-                        if (isHistoryTooltipPinned && hoveredHistoryPoint?.key === point.key) {
-                          setHoveredHistoryPoint(null);
-                          setIsHistoryTooltipPinned(false);
-                          return;
-                        }
-
-                        setHoveredHistoryPoint(point);
-                        setIsHistoryTooltipPinned(true);
-                      }}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                      }}
-                    >
-                      <circle
-                        cx={point.x}
-                        cy={point.y}
-                        r={hoveredHistoryPoint?.key === point.key ? 9 : 6}
-                        fill="#059669"
-                        stroke="#ffffff"
-                        strokeWidth={3}
-                        className="transition-all"
-                      />
-                      <circle cx={point.x} cy={point.y} r={16} fill="transparent" />
-                      <text
-                        x={point.x}
-                        y={chartGeometry.height - 12}
-                        textAnchor="middle"
-                        className="fill-slate-600"
-                        style={{ fontSize: '13px' }}
-                      >
-                        {point.label}
-                      </text>
-                    </g>
-                  ))}
-
-                  {hoveredHistoryPoint && (
-                    <g pointerEvents="none">
-                      {(() => {
-                        const tooltipWidth = 280;
-                        const tooltipHeight = 80;
-                        const desiredX = hoveredHistoryPoint.x - tooltipWidth / 2;
-                        const minX = chartGeometry.paddingLeft;
-                        const maxX = chartGeometry.width - chartGeometry.paddingRight - tooltipWidth;
-                        const tooltipX = Math.min(maxX, Math.max(minX, desiredX));
-                        const tooltipY = Math.max(12, hoveredHistoryPoint.y - tooltipHeight - 16);
-
-                        return (
-                          <>
-                            <rect
-                              x={tooltipX}
-                              y={tooltipY}
-                              width={tooltipWidth}
-                              height={tooltipHeight}
-                              rx={12}
-                              fill="#ffffff"
-                              stroke="#e2e8f0"
-                              strokeWidth={2}
-                              style={{ filter: 'drop-shadow(0 12px 24px rgba(15, 23, 42, 0.15))' }}
-                            />
-                            <text x={tooltipX + 16} y={tooltipY + 32} className="fill-slate-900" style={{ fontSize: '24px', fontWeight: 700 }}>
-                              {hoveredHistoryPoint.label}
-                            </text>
-                            <text x={tooltipX + 16} y={tooltipY + 62} className="fill-emerald-700" style={{ fontSize: '22px', fontWeight: 600 }}>
-                              Ordens de Serviço: {hoveredHistoryPoint.count}
-                            </text>
-                          </>
-                        );
-                      })()}
-                    </g>
-                  )}
-                </svg>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       <div className="mb-8">
         <h3 className="text-xl font-bold text-slate-900">Indicadores de Checklist Mensal</h3>

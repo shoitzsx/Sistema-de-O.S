@@ -85,6 +85,25 @@ function normalizeServiceOrder(order: any): ServiceOrder {
   };
 }
 
+function isMissingAssignedColumnsError(err: unknown): boolean {
+  const apiError = err as { code?: string; message?: string; details?: string; hint?: string };
+  const combined = `${apiError?.message || ''} ${apiError?.details || ''} ${apiError?.hint || ''}`.toLowerCase();
+
+  return (
+    apiError?.code === '42703' ||
+    combined.includes('assigned_user_id') ||
+    combined.includes('assigned_user_name') ||
+    combined.includes('column')
+  );
+}
+
+function stripAssignedFields<T extends Record<string, unknown>>(payload: T): T {
+  const copy = { ...payload };
+  delete (copy as any).assigned_user_id;
+  delete (copy as any).assigned_user_name;
+  return copy;
+}
+
 const STORAGE_BUCKET = (import.meta.env.VITE_SUPABASE_STORAGE_BUCKET as string | undefined) || 'machines';
 const STORAGE_BUCKET_CANDIDATES = Array.from(new Set([STORAGE_BUCKET, 'machines', 'manuals']));
 const CHECKLIST_SCHEDULES_STORAGE_KEY = 'checklist-schedules:v1';
@@ -584,21 +603,39 @@ export async function createServiceOrder(order: Omit<ServiceOrder, 'id' | 'creat
       return normalizeServiceOrder(localRow);
     }
 
-    const { data, error } = await supabase
+    let insertedData: any = null;
+
+    const firstTry = await supabase
       .from('service_orders')
       .insert([orderToInsert])
       .select()
       .single();
 
-    if (error) throw error;
+    if (firstTry.error) {
+      if (!isMissingAssignedColumnsError(firstTry.error)) {
+        throw firstTry.error;
+      }
+
+      const fallbackPayload = stripAssignedFields(orderToInsert as any);
+      const fallbackTry = await supabase
+        .from('service_orders')
+        .insert([fallbackPayload])
+        .select()
+        .single();
+
+      if (fallbackTry.error) throw fallbackTry.error;
+      insertedData = fallbackTry.data;
+    } else {
+      insertedData = firstTry.data;
+    }
     
-    if (data) {
-      upsertCachedRow('service_orders', data as any);
+    if (insertedData) {
+      upsertCachedRow('service_orders', insertedData as any);
       void processOfflineSyncQueue();
       return {
-        ...data,
-        tools: safeParseJson<string[]>(data.tools, []),
-        used_parts_tools: safeParseJson<number[]>(data.used_parts_tools, [])
+        ...insertedData,
+        tools: safeParseJson<string[]>(insertedData.tools, []),
+        used_parts_tools: safeParseJson<number[]>(insertedData.used_parts_tools, [])
       };
     }
     return null;
@@ -634,22 +671,41 @@ export async function updateServiceOrder(id: number, updates: Partial<ServiceOrd
       return null;
     }
 
-    const { data, error } = await supabase
+    let updatedData: any = null;
+
+    const firstTry = await supabase
       .from('service_orders')
       .update(updateData)
       .eq('id', id)
       .select()
       .single();
 
-    if (error) throw error;
+    if (firstTry.error) {
+      if (!isMissingAssignedColumnsError(firstTry.error)) {
+        throw firstTry.error;
+      }
+
+      const fallbackUpdateData = stripAssignedFields(updateData as any);
+      const fallbackTry = await supabase
+        .from('service_orders')
+        .update(fallbackUpdateData)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (fallbackTry.error) throw fallbackTry.error;
+      updatedData = fallbackTry.data;
+    } else {
+      updatedData = firstTry.data;
+    }
     
-    if (data) {
-      upsertCachedRow('service_orders', data as any);
+    if (updatedData) {
+      upsertCachedRow('service_orders', updatedData as any);
       void processOfflineSyncQueue();
       return {
-        ...data,
-        tools: safeParseJson<string[]>(data.tools, []),
-        used_parts_tools: safeParseJson<number[]>(data.used_parts_tools, [])
+        ...updatedData,
+        tools: safeParseJson<string[]>(updatedData.tools, []),
+        used_parts_tools: safeParseJson<number[]>(updatedData.used_parts_tools, [])
       };
     }
     return null;

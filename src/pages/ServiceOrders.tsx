@@ -428,7 +428,12 @@ export default function ServiceOrders() {
       const data = await getServiceOrders();
       const scopedOrders = isAdmin
         ? data
-        : data.filter((order) => order.operator_id === user?.id);
+        : data.filter((order) => {
+            const assignedUserId = Number(order.assigned_user_id);
+            const isAssignedToMe = Number.isFinite(assignedUserId) && assignedUserId === user?.id;
+            const isCreator = order.operator_id === user?.id;
+            return isCreator || isAssignedToMe;
+          });
       setOrders(scopedOrders);
     } catch (err) {
       console.error('Erro ao buscar ordens:', err);

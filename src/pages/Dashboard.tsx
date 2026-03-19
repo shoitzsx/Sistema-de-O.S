@@ -6,7 +6,7 @@ import { motion } from 'motion/react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'react-toastify';
 import { getMachines, getPartsTools, getServiceOrders } from '../lib/supabaseApi';
-import NotificationSettings from '../components/NotificationSettings';
+import NotificationBox from '../components/NotificationBox';
 import TutorialCenter, { type TutorialItem } from '../components/TutorialCenter';
 import {
   getDefaultNotificationRules,
@@ -167,18 +167,6 @@ export default function Dashboard() {
     notificationRules.overdueHours,
     notificationRules.remindEveryMinutes,
   ]);
-
-  const handleSaveNotificationRules = (rules: NotificationRules) => {
-    if (!user) return;
-
-    setNotificationRules(rules);
-    saveNotificationRules(user.id, rules);
-    if (isAdmin) {
-      saveGlobalNotificationRules(rules);
-    }
-    setNotificationOpen(false);
-    toast.success('Configurações de notificação atualizadas.');
-  };
 
   const modules = [
     {
@@ -378,11 +366,9 @@ export default function Dashboard() {
         onClose={() => setTutorialOpen(false)}
         tutorials={availableTutorials}
       />
-      <NotificationSettings
+      <NotificationBox
         open={notificationOpen}
-        initialRules={notificationRules}
         onClose={() => setNotificationOpen(false)}
-        onSave={handleSaveNotificationRules}
       />
 
       <div className="mb-8">
@@ -402,7 +388,7 @@ export default function Dashboard() {
               onClick={() => setNotificationOpen(true)}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-amber-100 text-amber-800 hover:bg-amber-200 font-medium"
             >
-              <Bell size={16} /> Configurar notificações
+              <Bell size={16} /> Caixa de notificações
             </button>
           </div>
         </div>

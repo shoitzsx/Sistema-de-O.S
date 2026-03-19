@@ -1,5 +1,6 @@
 import { useAuth } from '../context/AuthContext';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { hasModuleAccess, isAdminUser } from '../lib/permissions';
 
 const routeModuleByPrefix: Array<{ prefix: string; moduleId: number | 'admin-only' }> = [
   { prefix: '/control-panel', moduleId: 8 },
@@ -24,8 +25,7 @@ export default function ProtectedRoute() {
     return <Navigate to="/login" replace />;
   }
 
-  const normalizedRole = String(user.role || '').trim().toLowerCase();
-  const isAdmin = normalizedRole === 'admin' || normalizedRole === 'administrador';
+  const isAdmin = isAdminUser(user);
 
   const matchedRoute = routeModuleByPrefix.find((item) =>
     location.pathname === item.prefix || location.pathname.startsWith(`${item.prefix}/`)
@@ -39,8 +39,8 @@ export default function ProtectedRoute() {
     return <Navigate to="/" replace />;
   }
 
-  const hasModuleAccess = (user.allowed_modules || []).includes(matchedRoute.moduleId);
-  if (!hasModuleAccess) {
+  const userHasModuleAccess = hasModuleAccess(user, matchedRoute.moduleId);
+  if (!userHasModuleAccess) {
     return <Navigate to="/" replace />;
   }
 

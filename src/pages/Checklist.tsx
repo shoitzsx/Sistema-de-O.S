@@ -20,6 +20,7 @@ import {
 import { getOfflineChecklistSyncSummary } from '../lib/offlineChecklist';
 import { supabase } from '../lib/supabase';
 import { showBrowserNotification } from '../lib/browserNotifications';
+import { canAccessChecklistNotifications, isAdminUser, MODULES, hasModuleAccess } from '../lib/permissions';
 
 interface ChecklistSchedule {
   id: number | string;
@@ -89,7 +90,8 @@ function toSafeDate(value: unknown): Date {
 
 export default function Checklist() {
   const { user } = useAuth();
-  const isAdmin = String(user?.role || '').trim().toLowerCase() === 'admin';
+  const isAdmin = isAdminUser(user);
+  const canReceiveChecklistAlerts = canAccessChecklistNotifications(user);
 
   const [machines, setMachines] = useState<Machine[]>([]);
   const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
@@ -193,9 +195,8 @@ export default function Checklist() {
     try {
       const data = await getUsers();
       const eligible = (data || []).filter((item) => {
-        const normalizedRole = String(item.role || '').trim().toLowerCase();
-        if (normalizedRole === 'admin' || normalizedRole === 'administrador') return false;
-        return (item.allowed_modules || []).includes(2);
+        if (isAdminUser(item)) return false;
+        return hasModuleAccess(item, MODULES.CHECKLIST);
       });
 
       setOperators(
@@ -306,7 +307,7 @@ export default function Checklist() {
   }, [isTvMode]);
 
   useEffect(() => {
-    if (!user || isAdmin) return;
+    if (!user || isAdmin || !canReceiveChecklistAlerts) return;
 
     const todayIso = new Date().toISOString().slice(0, 10);
     const dueToday = schedules.filter(
@@ -343,7 +344,7 @@ export default function Checklist() {
       toast.info(`Você possui ${upcomingCount} checklist(s) agendado(s).`);
       localStorage.setItem(dedupeKey, '1');
     }
-  }, [schedules, user, isAdmin]);
+  }, [schedules, user, isAdmin, canReceiveChecklistAlerts]);
 
   const handleCreateSchedule = async () => {
     if (!user || !isAdmin) return;

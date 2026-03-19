@@ -12,12 +12,12 @@ import TutorialCenter, { type TutorialItem } from '../components/TutorialCenter'
 import {
   getDefaultNotificationRules,
   getOperationalNotificationRules,
-  getNotificationRules,
   saveGlobalNotificationRules,
   saveNotificationRules,
   type NotificationRules,
 } from '../lib/notificationRules';
 import { showBrowserNotification } from '../lib/browserNotifications';
+import { canAccessServiceOrderNotifications, hasModuleAccess, isAdminUser } from '../lib/permissions';
 
 interface ServiceOrderSummary {
   id: number;
@@ -29,7 +29,8 @@ interface ServiceOrderSummary {
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const isAdmin = String(user?.role || '').trim().toLowerCase() === 'admin';
+  const isAdmin = isAdminUser(user);
+  const canAccessServiceOrders = canAccessServiceOrderNotifications(user);
   const [orders, setOrders] = useState<ServiceOrderSummary[]>([]);
   const [tutorialOpen, setTutorialOpen] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
@@ -72,9 +73,10 @@ export default function Dashboard() {
 
   const visibleOrders = useMemo(() => {
     if (!user) return [];
+    if (!canAccessServiceOrders) return [];
     if (isAdmin) return orders;
     return orders.filter((order) => order.operator_id === user.id);
-  }, [orders, user, isAdmin]);
+  }, [orders, user, isAdmin, canAccessServiceOrders]);
 
   const kpis = useMemo(() => {
     const now = Date.now();
@@ -115,6 +117,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!user) return;
+    if (!canAccessServiceOrders) return;
     if (visibleOrders.length === 0) return;
 
     const key = `dashboard-alert-last:${user.id}`;
@@ -168,6 +171,7 @@ export default function Dashboard() {
     notificationRules.enableBrowserNotifications,
     notificationRules.overdueHours,
     notificationRules.remindEveryMinutes,
+    canAccessServiceOrders,
   ]);
 
   const handleSaveSettings = (rules: NotificationRules) => {
@@ -250,7 +254,7 @@ export default function Dashboard() {
 
   const allowedModules = isAdmin
     ? modules
-    : modules.filter(m => user?.allowed_modules.includes(m.id));
+    : modules.filter((m) => hasModuleAccess(user, m.id));
 
   const tutorialByModuleId: Record<number, TutorialItem> = {
     8: {

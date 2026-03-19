@@ -34,6 +34,8 @@ interface ServiceOrder {
   machine_name: string;
   operator_name: string;
   operator_id: number;
+  assigned_user_id?: number | null;
+  assigned_user_name?: string | null;
   created_at?: string;
   maintenance_type: 'preventiva' | 'corretiva';
   technician_name: string;
@@ -287,9 +289,10 @@ export default function ServiceOrders() {
       const baseRouting: Record<number, OrderRoutingMeta> = {};
 
       orders.forEach((order) => {
+        const assignedId = Number(order.assigned_user_id);
         baseRouting[order.id] = {
-          assignedUserId: null,
-          assignedUserName: null,
+          assignedUserId: Number.isFinite(assignedId) && assignedId > 0 ? assignedId : null,
+          assignedUserName: order.assigned_user_name || null,
           queueStartedAt: order.created_at || order.start_time || null,
           workStartedAt: null,
         };
@@ -535,6 +538,8 @@ export default function ServiceOrders() {
         machine_name: machine.name,
         operator_id: user.id,
         operator_name: user.name,
+        assigned_user_id: selectedResponsible?.id ?? null,
+        assigned_user_name: selectedResponsible?.name ?? null,
         start_time: queueStartedAt,
         end_time: null,
         status: 'open' as const,
@@ -931,19 +936,31 @@ export default function ServiceOrders() {
     return Boolean(routing?.workStartedAt);
   };
 
+  const getEffectiveAssignedUserId = (order: ServiceOrder): number | null => {
+    const assignedFromOrder = Number(order.assigned_user_id);
+    if (Number.isFinite(assignedFromOrder) && assignedFromOrder > 0) {
+      return assignedFromOrder;
+    }
+
+    const assignedFromRouting = Number(orderRoutingById[order.id]?.assignedUserId);
+    return Number.isFinite(assignedFromRouting) && assignedFromRouting > 0 ? assignedFromRouting : null;
+  };
+
+  const getEffectiveAssignedUserName = (order: ServiceOrder): string | null => {
+    const fromOrder = String(order.assigned_user_name || '').trim();
+    if (fromOrder) return fromOrder;
+
+    const fromRouting = String(orderRoutingById[order.id]?.assignedUserName || '').trim();
+    return fromRouting || null;
+  };
+
   const canViewOrder = (order: ServiceOrder) => {
     if (!user) return false;
     if (isAdmin) return true;
 
-    const routing = orderRoutingById[order.id];
-    if (!routing) return order.operator_id === user.id;
-
-    if (routing.workStartedAt) {
-      return routing.assignedUserId === user.id;
-    }
-
-    if (routing.assignedUserId) {
-      return routing.assignedUserId === user.id;
+    const assignedUserId = getEffectiveAssignedUserId(order);
+    if (assignedUserId) {
+      return assignedUserId === user.id;
     }
 
     return true;
@@ -970,6 +987,8 @@ export default function ServiceOrders() {
       const updated = await updateServiceOrder(order.id, {
         start_time: nowIso,
         technician_name: user.name,
+        assigned_user_id: user.id,
+        assigned_user_name: user.name,
       });
 
       if (!updated) {
@@ -1079,10 +1098,12 @@ export default function ServiceOrders() {
     }
 
     const q = searchTerm.toLowerCase();
+    const assignedName = (getEffectiveAssignedUserName(order) || '').toLowerCase();
     return (
       order.machine_name.toLowerCase().includes(q) ||
       order.component.toLowerCase().includes(q) ||
       order.technician_name.toLowerCase().includes(q) ||
+      assignedName.includes(q) ||
       String(order.id).includes(q)
     );
   });
@@ -1307,6 +1328,7 @@ export default function ServiceOrders() {
               </div>
               <h3 className="text-lg font-bold text-slate-900">{order.machine_name}</h3>
               <p className="text-slate-600 mt-1"><span className="font-medium">Componente:</span> {order.component}</p>
+              <p className="text-slate-600 mt-1"><span className="font-medium">Responsável:</span> {getEffectiveAssignedUserName(order) || 'N/A (disponível para todos)'}</p>
               <p className="text-slate-500 text-sm mt-2 bg-slate-50 p-2 rounded-lg">{order.description}</p>
               {order.used_parts_tools && order.used_parts_tools.length > 0 && (
                 <div className="mt-3">

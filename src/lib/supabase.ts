@@ -34,6 +34,8 @@ export interface ServiceOrder {
   machine_name: string;
   operator_id: number;
   operator_name: string;
+  assigned_user_id?: number | null;
+  assigned_user_name?: string | null;
   maintenance_type: 'preventiva' | 'corretiva';
   technician_name: string;
   component: string;

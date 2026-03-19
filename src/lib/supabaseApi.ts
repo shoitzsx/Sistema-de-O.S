@@ -619,6 +619,8 @@ export async function updateServiceOrder(id: number, updates: Partial<ServiceOrd
     if (updates.status !== undefined) updateData.status = updates.status;
     if (updates.end_time !== undefined) updateData.end_time = updates.end_time;
     if (updates.start_time !== undefined) updateData.start_time = updates.start_time;
+    if (updates.assigned_user_id !== undefined) updateData.assigned_user_id = updates.assigned_user_id;
+    if (updates.assigned_user_name !== undefined) updateData.assigned_user_name = updates.assigned_user_name;
 
     if (!isBrowserOnline()) {
       queueUpdate('service_orders', 'service_orders', id, updateData);

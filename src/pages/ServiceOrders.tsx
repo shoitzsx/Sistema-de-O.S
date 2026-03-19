@@ -965,7 +965,7 @@ export default function ServiceOrders() {
     return Boolean(routing?.workStartedAt);
   };
 
-  const getEffectiveAssignedUserId = (order: ServiceOrder): number | null => {
+  function getEffectiveAssignedUserId(order: ServiceOrder): number | null {
     const assignedFromOrder = Number(order.assigned_user_id);
     if (Number.isFinite(assignedFromOrder) && assignedFromOrder > 0) {
       return assignedFromOrder;
@@ -973,7 +973,7 @@ export default function ServiceOrders() {
 
     const assignedFromRouting = Number(orderRoutingById[order.id]?.assignedUserId);
     return Number.isFinite(assignedFromRouting) && assignedFromRouting > 0 ? assignedFromRouting : null;
-  };
+  }
 
   const getEffectiveAssignedUserName = (order: ServiceOrder): string | null => {
     const fromOrder = String(order.assigned_user_name || '').trim();

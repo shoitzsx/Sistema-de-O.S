@@ -1,94 +1,127 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Bell, CheckCircle, Info, AlertTriangle, Clock, Trash2 } from 'lucide-react';
+import { X, Bell, CheckCircle, Info, AlertTriangle, Clock, Trash2, Check } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getLocalAuditLogs } from '../lib/audit';
+import { 
+  getUserNotifications, 
+  markNotificationAsRead, 
+  deleteUserNotification, 
+  clearAllUserNotifications,
+  createNotification
+} from '../lib/supabaseApi';
+import { UserNotification } from '../lib/supabase';
 
 interface NotificationBoxProps {
   open: boolean;
   onClose: () => void;
 }
 
-interface Notification {
-  id: string;
-  title: string;
-  message: string;
-  type: 'info' | 'success' | 'warning' | 'error';
-  time: string;
-  read: boolean;
-  entityId?: number;
-}
-
 export default function NotificationBox({ open, onClose }: NotificationBoxProps) {
   const { user } = useAuth();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<UserNotification[]>([]);
   const isAdmin = user?.role === 'admin' || user?.role === 'administrador';
 
-  useEffect(() => {
-    if (!open || !user) return;
-
-    // Gerar notificações a partir dos logs de auditoria e eventos do sistema
-    const logs = getLocalAuditLogs();
+  const loadNotifications = async () => {
+    if (!user) return;
+    const remote = await getUserNotifications(user.id);
     
-    // Filtrar logs relevantes para o usuário (ou todos se for admin)
+    // Fallback/Legacy: Gerar notificações a partir dos logs de auditoria se não houver remotas
+    // (Isso garante que enquanto o usuário não rodar o SQL, ele ainda veja notificações locais)
+    const logs = getLocalAuditLogs();
     const relevantLogs = logs.filter(log => {
       if (isAdmin) return true;
-      
-      // Notificações para o usuário: 
-      // 1. Ações que ele realizou
-      // 2. O.S. designadas a ele (vêm nos detalhes)
       if (log.user_id === user.id) return true;
-      
       const details = log.details as any;
       if (details?.assigned_user_id === user.id) return true;
-      
       return false;
-    });
+    }).slice(0, 10); // Limitar para não poluir
 
-    const mapped: Notification[] = relevantLogs.map(log => {
+    const mappedFromLogs: UserNotification[] = relevantLogs.map(log => {
       let title = 'Notificação';
       let message = '';
       let type: 'info' | 'success' | 'warning' | 'error' = 'info';
 
       switch (log.action) {
         case 'service_order_created':
-          title = 'Nova O.S. Criada';
-          message = `Uma Ordem de Serviço (#${String(log.entity_id).padStart(4, '0')}) foi registrada.`;
-          type = 'info';
+          title = isAdmin ? `O.S. Criada por ${log.user_name}` : 'Nova O.S. Criada';
+          message = `Ordem de Serviço (#${String(log.entity_id).padStart(4, '0')}) registrada.`;
           break;
         case 'service_order_updated':
-          title = 'O.S. Atualizada';
-          message = `A O.S. #${String(log.entity_id).padStart(4, '0')} sofreu alterações.`;
-          type = 'info';
+          title = isAdmin ? `O.S. #${String(log.entity_id).padStart(4, '0')} Atualizada` : 'O.S. Atualizada';
+          message = isAdmin 
+            ? `Alterações feitas por ${log.user_name}.` 
+            : `A O.S. #${String(log.entity_id).padStart(4, '0')} sofreu alterações.`;
           break;
         case 'service_order_closed':
-          title = 'O.S. Finalizada';
-          message = `Trabalho concluído na O.S. #${String(log.entity_id).padStart(4, '0')}.`;
+          title = isAdmin ? `O.S. #${String(log.entity_id).padStart(4, '0')} Finalizada` : 'O.S. Finalizada';
+          message = isAdmin 
+            ? `Concluída por ${log.user_name}.`
+            : `Trabalho concluído na O.S. #${String(log.entity_id).padStart(4, '0')}.`;
           type = 'success';
           break;
         case 'service_order_deleted':
           title = 'O.S. Removida';
-          message = `A O.S. #${String(log.entity_id).padStart(4, '0')} foi excluída do sistema.`;
+          message = isAdmin
+            ? `A O.S. #${String(log.entity_id).padStart(4, '0')} foi excluída por ${log.user_name}.`
+            : `A O.S. #${String(log.entity_id).padStart(4, '0')} excluída.`;
           type = 'warning';
           break;
       }
 
       return {
-        id: log.id,
+        id: `log_${log.id}`,
+        user_id: user.id,
         title,
         message,
         type,
-        time: log.created_at,
         read: false,
-        entityId: log.entity_id || undefined
+        created_at: log.created_at,
+        entity_id: log.entity_id
       };
     });
 
-    // Ordenar por mais recente
-    setNotifications(mapped.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()));
-  }, [open, user, isAdmin]);
+    // Combinar e priorizar as remotas
+    const combined = [...remote];
+    const remoteIds = new Set(remote.map(r => r.entity_id));
+    
+    // Adicionar dos logs apenas se não estiverem nas remotas (para evitar duplicidade básica)
+    mappedFromLogs.forEach(n => {
+      if (!n.entity_id || !remoteIds.has(n.entity_id)) {
+        combined.push(n);
+      }
+    });
 
-  const clearNotifications = () => {
+    setNotifications(combined.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+  };
+
+  useEffect(() => {
+    if (open && user) {
+      void loadNotifications();
+    }
+  }, [open, user]);
+
+  const handleMarkAsRead = async (id: string) => {
+    if (id.startsWith('log_')) {
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+      return;
+    }
+    await markNotificationAsRead(id);
+    void loadNotifications();
+  };
+
+  const handleDelete = async (id: string) => {
+    if (id.startsWith('log_')) {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+      return;
+    }
+    await deleteUserNotification(id);
+    void loadNotifications();
+  };
+
+  const clearAll = async () => {
+    if (!user) return;
+    await clearAllUserNotifications(user.id);
     setNotifications([]);
   };
 
@@ -143,7 +176,7 @@ export default function NotificationBox({ open, onClose }: NotificationBoxProps)
                   notifications.map((notif) => (
                     <div 
                       key={notif.id}
-                      className={`p-4 rounded-xl border flex gap-4 transition-all hover:shadow-sm ${
+                      className={`p-4 rounded-xl border flex gap-4 group/item transition-all hover:shadow-sm ${
                         notif.read ? 'bg-white border-slate-100' : 'bg-blue-50/30 border-blue-100'
                       }`}
                     >
@@ -162,12 +195,28 @@ export default function NotificationBox({ open, onClose }: NotificationBoxProps)
                         <div className="flex items-start justify-between gap-2">
                           <h4 className="text-sm font-bold text-slate-900 truncate">{notif.title}</h4>
                           <span className="text-[10px] font-medium text-slate-400 whitespace-nowrap mt-0.5">
-                            {new Date(notif.time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                            {new Date(notif.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                           </span>
                         </div>
                         <p className="text-sm text-slate-600 mt-1 leading-relaxed">
                           {notif.message}
                         </p>
+                        <div className="mt-3 flex gap-2 opacity-0 group-hover/item:opacity-100 transition-opacity">
+                          {!notif.read && (
+                            <button
+                              onClick={() => handleMarkAsRead(notif.id)}
+                              className="text-[11px] font-bold text-blue-600 flex items-center gap-1 hover:underline"
+                            >
+                              <Check size={12} /> Marcar como lida
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleDelete(notif.id)}
+                            className="text-[11px] font-bold text-slate-400 flex items-center gap-1 hover:text-red-500 hover:underline"
+                          >
+                            <Trash2 size={12} /> Remover
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))
@@ -186,7 +235,7 @@ export default function NotificationBox({ open, onClose }: NotificationBoxProps)
               
               {notifications.length > 0 && (
                 <button
-                  onClick={clearNotifications}
+                  onClick={clearAll}
                   className="text-slate-400 hover:text-red-500 flex items-center gap-1.5 transition-colors text-sm font-medium"
                 >
                   <Trash2 size={14} /> Limpar tudo

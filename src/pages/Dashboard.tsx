@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'react-toastify';
 import { getMachines, getPartsTools, getServiceOrders } from '../lib/supabaseApi';
 import NotificationBox from '../components/NotificationBox';
+import NotificationSettings from '../components/NotificationSettings';
 import TutorialCenter, { type TutorialItem } from '../components/TutorialCenter';
 import {
   getDefaultNotificationRules,
@@ -32,6 +33,7 @@ export default function Dashboard() {
   const [orders, setOrders] = useState<ServiceOrderSummary[]>([]);
   const [tutorialOpen, setTutorialOpen] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [notificationRules, setNotificationRules] = useState<NotificationRules>(getDefaultNotificationRules());
 
   useEffect(() => {
@@ -167,6 +169,17 @@ export default function Dashboard() {
     notificationRules.overdueHours,
     notificationRules.remindEveryMinutes,
   ]);
+
+  const handleSaveSettings = (rules: NotificationRules) => {
+    if (!user) return;
+    setNotificationRules(rules);
+    saveNotificationRules(user.id, rules);
+    if (isAdmin) {
+      saveGlobalNotificationRules(rules);
+    }
+    setSettingsOpen(false);
+    toast.success('Regras de notificação atualizadas.');
+  };
 
   const modules = [
     {
@@ -370,6 +383,12 @@ export default function Dashboard() {
         open={notificationOpen}
         onClose={() => setNotificationOpen(false)}
       />
+      <NotificationSettings
+        open={settingsOpen}
+        initialRules={notificationRules}
+        onClose={() => setSettingsOpen(false)}
+        onSave={handleSaveSettings}
+      />
 
       <div className="mb-8">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -384,11 +403,21 @@ export default function Dashboard() {
             >
               <GraduationCap size={16} /> Tutorial
             </button>
+
+            {isAdmin && (
+              <button
+                onClick={() => setSettingsOpen(true)}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-slate-100 text-slate-800 hover:bg-slate-200 font-medium"
+              >
+                <Activity size={16} /> Configurar Alertas
+              </button>
+            )}
+
             <button
               onClick={() => setNotificationOpen(true)}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-amber-100 text-amber-800 hover:bg-amber-200 font-medium"
             >
-              <Bell size={16} /> Caixa de notificações
+              <Bell size={16} /> {isAdmin ? 'Notificações Globais' : 'Caixa de notificações'}
             </button>
           </div>
         </div>

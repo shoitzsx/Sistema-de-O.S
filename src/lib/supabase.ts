@@ -94,3 +94,14 @@ export interface ChecklistSchedule {
   created_at?: string;
   sync_status?: 'synced' | 'local-only';
 }
+
+export interface UserNotification {
+  id: string;
+  user_id: number;
+  title: string;
+  message: string;
+  type: 'info' | 'success' | 'warning' | 'error';
+  read: boolean;
+  entity_id?: number | null;
+  created_at: string;
+}

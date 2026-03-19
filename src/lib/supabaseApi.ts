@@ -1039,6 +1039,88 @@ export async function createChecklistSchedule(input: {
   return localRow;
 }
 
+// --- User Notifications ---
+
+export async function getUserNotifications(userId: number): Promise<UserNotification[]> {
+  try {
+    const { data, error } = await supabase
+      .from('user_notifications')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (error) {
+       if (error.code === '42P01') return []; // Tabela não existe ainda
+       throw error;
+    }
+    return data || [];
+  } catch (err) {
+    console.error('Erro ao buscar notificações:', err);
+    return [];
+  }
+}
+
+export async function createNotification(notification: {
+  user_id: number;
+  title: string;
+  message: string;
+  type: 'info' | 'success' | 'warning' | 'error';
+  entity_id?: number | null;
+}): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('user_notifications')
+      .insert([notification]);
+
+    if (error) {
+       // Silencioso se a tabela não existir ainda
+       if (error.code !== '42P01') throw error;
+    }
+  } catch (err) {
+    console.error('Erro ao criar notificação remota:', err);
+  }
+}
+
+export async function markNotificationAsRead(notificationId: string): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('user_notifications')
+      .update({ read: true })
+      .eq('id', notificationId);
+
+    if (error) throw error;
+  } catch (err) {
+    console.error('Erro ao marcar notificação como lida:', err);
+  }
+}
+
+export async function deleteUserNotification(notificationId: string): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('user_notifications')
+      .delete()
+      .eq('id', notificationId);
+
+    if (error) throw error;
+  } catch (err) {
+    console.error('Erro ao deletar notificação:', err);
+  }
+}
+
+export async function clearAllUserNotifications(userId: number): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('user_notifications')
+      .delete()
+      .eq('user_id', userId);
+
+    if (error) throw error;
+  } catch (err) {
+    console.error('Erro ao limpar notificações:', err);
+  }
+}
+
 export async function completeChecklistSchedulesForMachine(operatorId: number, machineId: number): Promise<void> {
   const nowIso = new Date().toISOString();
   const todayIso = nowIso.slice(0, 10);

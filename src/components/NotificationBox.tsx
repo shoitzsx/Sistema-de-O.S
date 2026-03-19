@@ -27,7 +27,6 @@ export default function NotificationBox({ open, onClose }: NotificationBoxProps)
     const remote = await getUserNotifications(user.id);
     
     // Fallback/Legacy: Gerar notificações a partir dos logs de auditoria se não houver remotas
-    // (Isso garante que enquanto o usuário não rodar o SQL, ele ainda veja notificações locais)
     const logs = getLocalAuditLogs();
     const relevantLogs = logs.filter(log => {
       if (isAdmin) return true;
@@ -35,7 +34,7 @@ export default function NotificationBox({ open, onClose }: NotificationBoxProps)
       const details = log.details as any;
       if (details?.assigned_user_id === user.id) return true;
       return false;
-    }).slice(0, 10); // Limitar para não poluir
+    }).slice(0, 10);
 
     const mappedFromLogs: UserNotification[] = relevantLogs.map(log => {
       let title = 'Notificação';
@@ -81,11 +80,9 @@ export default function NotificationBox({ open, onClose }: NotificationBoxProps)
       };
     });
 
-    // Combinar e priorizar as remotas
     const combined = [...remote];
-    const remoteIds = new Set(remote.map(r => r.entity_id));
+    const remoteIds = new Set(remote.map(r => r.entity_id).filter(Boolean));
     
-    // Adicionar dos logs apenas se não estiverem nas remotas (para evitar duplicidade básica)
     mappedFromLogs.forEach(n => {
       if (!n.entity_id || !remoteIds.has(n.entity_id)) {
         combined.push(n);
@@ -125,29 +122,28 @@ export default function NotificationBox({ open, onClose }: NotificationBoxProps)
     setNotifications([]);
   };
 
-  if (!open) return null;
-
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-        <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity" 
-          />
+      {open && (
+        <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+          <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={onClose}
+              className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity" 
+            />
 
-          <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
 
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full"
-          >
-            <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full"
+            >
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
                   <div className="bg-amber-100 p-2 rounded-lg text-amber-600">
@@ -245,6 +241,7 @@ export default function NotificationBox({ open, onClose }: NotificationBoxProps)
           </motion.div>
         </div>
       </div>
+      )}
     </AnimatePresence>
   );
 }

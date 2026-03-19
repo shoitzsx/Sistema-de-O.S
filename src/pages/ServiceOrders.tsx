@@ -426,19 +426,27 @@ export default function ServiceOrders() {
   const fetchOrders = async () => {
     try {
       const data = await getServiceOrders();
-      const scopedOrders = isAdmin
-        ? data
-        : data.filter((order) => {
-            const assignedUserId = Number(order.assigned_user_id);
-            const isAssignedToMe = Number.isFinite(assignedUserId) && assignedUserId === user?.id;
-            const isCreator = order.operator_id === user?.id;
-            return isCreator || isAssignedToMe;
-          });
-      setOrders(scopedOrders);
+      setOrders(data);
     } catch (err) {
       console.error('Erro ao buscar ordens:', err);
     }
   };
+
+  const visibleOrdersForTable = useMemo(() => {
+    if (isAdmin) return orders;
+    return orders.filter((order) => {
+      // 1. Criador vê
+      if (order.operator_id === user?.id) return true;
+
+      const assignedUserId = getEffectiveAssignedUserId(order);
+      // 2. Se não tem responsável fixo, fica visível para todos os operadores (Disponível)
+      if (!assignedUserId) return true;
+
+      // 3. Se tem responsável, apenas este responsável vê
+      return assignedUserId === user?.id;
+    });
+  }, [orders, isAdmin, user?.id, orderRoutingById]);
+
 
   const fetchPartsTools = async () => {
     try {
@@ -555,6 +563,22 @@ export default function ServiceOrders() {
       const result = await createServiceOrder(orderData);
 
       if (result) {
+        // Enviar notificação real para o responsável designado se houver
+        if (selectedResponsible) {
+          try {
+            const { createNotification } = await import('../lib/supabaseApi');
+            await createNotification({
+              user_id: selectedResponsible.id,
+              title: 'Nova O.S. Designada',
+              message: `Você foi designado como responsável pela O.S. na máquina ${machine.name} (${newOrder.component}).`,
+              type: 'info',
+              entity_id: result.id
+            });
+          } catch (notifErr) {
+            console.error('Erro ao enviar notificação de designação:', notifErr);
+          }
+        }
+
         await recordAuditAction({
           action: 'service_order_created',
           entityId: result.id,
@@ -1084,16 +1108,7 @@ export default function ServiceOrders() {
     }
   };
 
-  const filteredOrders = orders.filter((order) => {
-    if (!canViewOrder(order)) {
-      return false;
-    }
-
-    // Admin keeps this page focused on active operations; closed items are in History.
-    if (isAdmin && order.status !== 'open') {
-      return false;
-    }
-
+  const filteredOrders = visibleOrdersForTable.filter((order) => {
     if (statusFilter !== 'all' && order.status !== statusFilter) {
       return false;
     }
@@ -1105,6 +1120,13 @@ export default function ServiceOrders() {
     const q = searchTerm.toLowerCase();
     const assignedName = (getEffectiveAssignedUserName(order) || '').toLowerCase();
     return (
+      order.machine_name.toLowerCase().includes(q) ||
+      order.technician_name.toLowerCase().includes(q) ||
+      order.description.toLowerCase().includes(q) ||
+      order.component.toLowerCase().includes(q) ||
+      assignedName.includes(q)
+    );
+  });
       order.machine_name.toLowerCase().includes(q) ||
       order.component.toLowerCase().includes(q) ||
       order.technician_name.toLowerCase().includes(q) ||

@@ -52,6 +52,24 @@ function normalizeUser(user: any): User {
   };
 }
 
+function isAdminRole(role: unknown): boolean {
+  const normalizedRole = String(role || '').trim().toLowerCase();
+  return normalizedRole === 'admin' || normalizedRole === 'administrador';
+}
+
+function sortUsersWithAdminFirst(users: User[]): User[] {
+  return [...users].sort((left, right) => {
+    const leftIsAdmin = isAdminRole(left.role);
+    const rightIsAdmin = isAdminRole(right.role);
+
+    if (leftIsAdmin !== rightIsAdmin) {
+      return leftIsAdmin ? -1 : 1;
+    }
+
+    return left.name.localeCompare(right.name, 'pt-BR', { sensitivity: 'base' });
+  });
+}
+
 function normalizeMachine(machine: any): Machine {
   return {
     ...machine,
@@ -223,7 +241,7 @@ export async function loginUser(username: string, password: string): Promise<Use
 
 export async function getUsers(): Promise<User[]> {
   if (!isBrowserOnline()) {
-    return getCachedRows<any>('users').map(normalizeUser);
+    return sortUsersWithAdminFirst(getCachedRows<any>('users').map(normalizeUser));
   }
 
   try {
@@ -246,10 +264,10 @@ export async function getUsers(): Promise<User[]> {
     })];
 
     setCachedRows('users', mergedRows as any[]);
-    return mergedRows.map(normalizeUser);
+    return sortUsersWithAdminFirst(mergedRows.map(normalizeUser));
   } catch (err) {
     console.error('Erro ao buscar usuários:', err);
-    return getCachedRows<any>('users').map(normalizeUser);
+    return sortUsersWithAdminFirst(getCachedRows<any>('users').map(normalizeUser));
   }
 }
 

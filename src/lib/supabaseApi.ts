@@ -1,4 +1,4 @@
-import { supabase, ServiceOrder, Machine, PartTool, User, ChecklistSchedule } from './supabase';
+import { supabase, ServiceOrder, Machine, PartTool, User, ChecklistSchedule, UserNotification } from './supabase';
 import {
   getUnsyncedChecklists,
   processChecklistSyncQueue,

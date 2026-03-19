@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
 import { Plus, Clock, CheckCircle, AlertTriangle, Play, Square, X, Package, Search, BookmarkPlus } from 'lucide-react';
@@ -1124,12 +1124,6 @@ export default function ServiceOrders() {
       order.technician_name.toLowerCase().includes(q) ||
       order.description.toLowerCase().includes(q) ||
       order.component.toLowerCase().includes(q) ||
-      assignedName.includes(q)
-    );
-  });
-      order.machine_name.toLowerCase().includes(q) ||
-      order.component.toLowerCase().includes(q) ||
-      order.technician_name.toLowerCase().includes(q) ||
       assignedName.includes(q) ||
       String(order.id).includes(q)
     );

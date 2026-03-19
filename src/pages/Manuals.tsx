@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
-import { Search, FileText, Upload, X, BookOpen, ShieldCheck, PlusCircle, Wrench } from 'lucide-react';
+import { Search, FileText, Upload, X, BookOpen, ShieldCheck, PlusCircle, Wrench, Download, ExternalLink, LoaderCircle, WifiOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'react-toastify';
 import { getMachines, createMachine, deleteMachine, updateMachine, getChecklistTemplateByModel, updateChecklistTemplate, uploadMachineImage, uploadMachineManual } from '../lib/supabaseApi';
+import { cacheUploadedManual, fetchAndCacheManual, getCachedManual, getCachedManualMachineIds, isPdfManual } from '../lib/offlineManuals';
 
 interface Machine {
   id: number;
@@ -34,6 +35,234 @@ function readJsonStorage<T>(key: string, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+interface ManualViewerModalProps {
+  machine: Machine;
+  onClose: () => void;
+  onCacheReady?: (machineId: number) => void;
+}
+
+function getManualFileName(machine: Machine, cachedName?: string | null) {
+  if (cachedName) return cachedName;
+
+  const manualUrl = String(machine.manual_url || '').trim();
+  if (!manualUrl) return `${machine.model || machine.name || 'manual'}.pdf`;
+
+  try {
+    const parsed = new URL(manualUrl);
+    return parsed.pathname.split('/').pop() || `${machine.model || machine.name || 'manual'}.pdf`;
+  } catch {
+    const parts = manualUrl.split('/');
+    return parts[parts.length - 1] || `${machine.model || machine.name || 'manual'}.pdf`;
+  }
+}
+
+function ManualViewerModal({ machine, onClose, onCacheReady }: ManualViewerModalProps) {
+  const [viewerSrc, setViewerSrc] = useState<string | null>(null);
+  const [downloadSrc, setDownloadSrc] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isCached, setIsCached] = useState(false);
+  const [canRenderInline, setCanRenderInline] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [fileName, setFileName] = useState(getManualFileName(machine));
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl: string | null = null;
+
+    const loadManual = async () => {
+      setIsLoading(true);
+      setErrorMessage('');
+      setViewerSrc(null);
+      setDownloadSrc(machine.manual_url || null);
+
+      const cachedManual = await getCachedManual(machine.id);
+      const manualIsPdf = isPdfManual(machine.manual_url, cachedManual?.mime_type || null);
+      setFileName(getManualFileName(machine, cachedManual?.file_name || null));
+
+      if (cachedManual && manualIsPdf) {
+        objectUrl = URL.createObjectURL(cachedManual.blob);
+        if (!active) {
+          URL.revokeObjectURL(objectUrl);
+          return;
+        }
+
+        setViewerSrc(objectUrl);
+        setDownloadSrc(objectUrl);
+        setCanRenderInline(true);
+        setIsCached(true);
+        setIsLoading(false);
+        return;
+      }
+
+      if (!machine.manual_url) {
+        setErrorMessage('Este equipamento ainda não possui manual cadastrado.');
+        setIsLoading(false);
+        return;
+      }
+
+      if (!manualIsPdf) {
+        setCanRenderInline(false);
+        setIsCached(Boolean(cachedManual));
+        setErrorMessage('Leitura dentro do site com cache offline está disponível para PDF. Para DOC ou DOCX, prefira converter o manual para PDF.');
+        setIsLoading(false);
+        return;
+      }
+
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        setErrorMessage('Este manual ainda não foi salvo offline neste dispositivo. Conecte-se uma vez para fazer o download local.');
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const downloaded = await fetchAndCacheManual(machine.id, machine.manual_url);
+        objectUrl = URL.createObjectURL(downloaded.blob);
+        if (!active) {
+          URL.revokeObjectURL(objectUrl);
+          return;
+        }
+
+        setViewerSrc(objectUrl);
+        setDownloadSrc(objectUrl);
+        setCanRenderInline(true);
+        setIsCached(true);
+        onCacheReady?.(machine.id);
+      } catch (error) {
+        console.error(error);
+        setViewerSrc(machine.manual_url);
+        setDownloadSrc(machine.manual_url);
+        setCanRenderInline(true);
+        setIsCached(false);
+        setErrorMessage('Não foi possível salvar o manual offline agora. Exibindo a versão online enquanto houver conexão.');
+      } finally {
+        if (active) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void loadManual();
+
+    return () => {
+      active = false;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [machine, onCacheReady]);
+
+  return (
+    <div className="fixed inset-0 z-[70] bg-slate-950/70 backdrop-blur-sm p-0 sm:p-4" onClick={onClose}>
+      <motion.div
+        initial={{ opacity: 0, y: 18, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 18, scale: 0.98 }}
+        transition={{ duration: 0.18 }}
+        onClick={(event) => event.stopPropagation()}
+        className="mx-auto flex h-[100dvh] w-full max-w-6xl flex-col overflow-hidden bg-white shadow-2xl sm:h-[calc(100dvh-2rem)] sm:rounded-[28px]"
+      >
+        <div className="border-b border-slate-200 bg-white px-4 py-3 sm:px-6 sm:py-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="truncate text-lg font-bold text-slate-900 sm:text-xl">{machine.name}</h3>
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">{machine.model}</span>
+                {isCached && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                    <Download size={12} /> Offline pronto
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 truncate text-sm text-slate-500">{fileName}</p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {machine.manual_url && (
+                <a
+                  href={machine.manual_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                >
+                  <ExternalLink size={16} /> Abrir externo
+                </a>
+              )}
+
+              {downloadSrc && (
+                <a
+                  href={downloadSrc}
+                  download={fileName}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100"
+                >
+                  <Download size={16} /> Baixar
+                </a>
+              )}
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white p-2 text-slate-600 transition hover:bg-slate-50"
+                aria-label="Fechar visualizador"
+              >
+                <X size={18} />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-auto bg-slate-100 px-3 py-3 sm:px-5 sm:py-5">
+          <div className="mx-auto flex h-full w-full max-w-5xl flex-col gap-4">
+            {errorMessage && (
+              <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                {typeof navigator !== 'undefined' && !navigator.onLine ? <WifiOff size={18} className="mt-0.5 shrink-0" /> : <BookOpen size={18} className="mt-0.5 shrink-0" />}
+                <p>{errorMessage}</p>
+              </div>
+            )}
+
+            {isLoading ? (
+              <div className="flex min-h-[50vh] flex-1 items-center justify-center rounded-3xl border border-slate-200 bg-white">
+                <div className="flex flex-col items-center gap-3 text-slate-500">
+                  <LoaderCircle size={28} className="animate-spin" />
+                  <p className="text-sm font-medium">Preparando manual para leitura...</p>
+                </div>
+              </div>
+            ) : canRenderInline && viewerSrc ? (
+              <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+                <iframe
+                  src={viewerSrc}
+                  title={`Manual ${machine.name}`}
+                  className="h-[68dvh] w-full sm:h-[72dvh]"
+                />
+              </div>
+            ) : (
+              <div className="flex min-h-[48vh] flex-1 flex-col items-center justify-center rounded-3xl border border-dashed border-slate-300 bg-white px-6 py-8 text-center">
+                <FileText size={34} className="mb-3 text-slate-400" />
+                <h4 className="text-lg font-semibold text-slate-800">Visualização interna indisponível para este formato</h4>
+                <p className="mt-2 max-w-xl text-sm leading-relaxed text-slate-500">
+                  PDFs podem ser lidos dentro do site e ficam salvos offline neste dispositivo após o primeiro acesso.
+                  Para DOC ou DOCX, use o botão externo ou envie o manual em PDF.
+                </p>
+                <div className="mt-5 flex flex-wrap justify-center gap-3">
+                  {machine.manual_url && (
+                    <a
+                      href={machine.manual_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-700"
+                    >
+                      <ExternalLink size={16} /> Abrir arquivo
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
 }
 
 export default function Manuals() {
@@ -71,8 +300,16 @@ export default function Manuals() {
   const [machineCategoryMap, setMachineCategoryMap] = useState<Record<string, string>>({});
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [checklistItems, setChecklistItems] = useState<{category: string, items: string[]}[]>([]);
+  const [viewerMachine, setViewerMachine] = useState<Machine | null>(null);
+  const [cachedManualMachineIds, setCachedManualMachineIds] = useState<number[]>([]);
 
   const getMachineCategory = (machineId: number) => machineCategoryMap[String(machineId)] || '';
+  const machineHasOfflineManual = (machineId: number) => cachedManualMachineIds.includes(machineId);
+
+  const refreshCachedManuals = async () => {
+    const ids = await getCachedManualMachineIds();
+    setCachedManualMachineIds(ids);
+  };
 
   const upsertMachineCategory = (machineId: number, category: string) => {
     const normalized = normalizeCategoryLabel(category);
@@ -237,6 +474,7 @@ export default function Manuals() {
 
   useEffect(() => {
     loadMachines();
+    void refreshCachedManuals();
 
     const storedCategories = readJsonStorage<string[]>(MANUAL_CATEGORIES_KEY, []);
     const normalizedStored = Array.isArray(storedCategories)
@@ -551,7 +789,14 @@ export default function Manuals() {
         if (selectedMachine && selectedMachine.id === machineId) {
           setSelectedMachine({ ...selectedMachine, manual_url: manualUrl });
         }
-        toast.success('Manual enviado com sucesso!');
+
+        if (isPdfManual(manualUrl, file.type)) {
+          await cacheUploadedManual(machineId, file, manualUrl);
+          await refreshCachedManuals();
+          toast.success('Manual enviado com sucesso e disponível offline neste dispositivo!');
+        } else {
+          toast.success('Manual enviado com sucesso! Para leitura offline ou online dentro do site, prefira PDF.');
+        }
       } else {
         toast.error('Erro ao enviar manual. Verifique o bucket de storage "machines" e permissões de upload.');
       }
@@ -744,19 +989,26 @@ export default function Manuals() {
                 )}
 
                 {machine.manual_url ? (
-                  <a
-                    href={machine.manual_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="text-blue-700 hover:text-blue-800 bg-blue-50 px-2 py-1 rounded-md"
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setViewerMachine(machine);
+                    }}
+                    className="text-emerald-700 hover:text-emerald-800 bg-emerald-50 px-2 py-1 rounded-md"
                   >
                     Abrir
-                  </a>
+                  </button>
                 ) : (
                   <span className="text-slate-400">Detalhes</span>
                 )}
               </div>
+
+              {machineHasOfflineManual(machine.id) && (
+                <div className="mt-3 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                  <Download size={12} /> Disponível offline
+                </div>
+              )}
             </div>
           </motion.div>
         ))}
@@ -1071,15 +1323,14 @@ export default function Manuals() {
 
                   <div className="flex flex-col sm:flex-row gap-4">
                     {selectedMachine.manual_url ? (
-                      <a 
-                        href={selectedMachine.manual_url} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-xl flex items-center justify-center gap-2 transition-colors shadow-lg shadow-blue-600/20"
+                      <button
+                        type="button"
+                        onClick={() => setViewerMachine(selectedMachine)}
+                        className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-3 px-6 rounded-xl flex items-center justify-center gap-2 transition-colors shadow-lg shadow-emerald-600/20"
                       >
                         <FileText size={20} />
-                        Ler Manual
-                      </a>
+                        Ler Manual no Site
+                      </button>
                     ) : (
                       <button disabled className="flex-1 bg-slate-100 text-slate-400 font-medium py-3 px-6 rounded-xl flex items-center justify-center gap-2 cursor-not-allowed">
                         <FileText size={20} />
@@ -1110,10 +1361,28 @@ export default function Manuals() {
                       <FileText size={20} /> Editar Template de Checklist
                     </button>
                   )}
+
+                  {selectedMachine.manual_url && machineHasOfflineManual(selectedMachine.id) && (
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-700">
+                      Este manual já está salvo offline neste dispositivo.
+                    </div>
+                  )}
                 </div>
               </div>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {viewerMachine && (
+          <ManualViewerModal
+            machine={viewerMachine}
+            onClose={() => setViewerMachine(null)}
+            onCacheReady={(machineId) => {
+              setCachedManualMachineIds((prev) => (prev.includes(machineId) ? prev : [...prev, machineId]));
+            }}
+          />
         )}
       </AnimatePresence>
 

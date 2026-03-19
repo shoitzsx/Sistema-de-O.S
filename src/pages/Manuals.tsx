@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'react-toastify';
 import { getMachines, createMachine, deleteMachine, updateMachine, getChecklistTemplateByModel, updateChecklistTemplate, uploadMachineImage, uploadMachineManual } from '../lib/supabaseApi';
 import { cacheUploadedManual, fetchAndCacheManual, getCachedManual, getCachedManualMachineIds, isPdfManual } from '../lib/offlineManuals';
+import { useDeviceDetection } from '../hooks/useDeviceDetection';
 
 interface Machine {
   id: number;
@@ -59,6 +60,7 @@ function getManualFileName(machine: Machine, cachedName?: string | null) {
 }
 
 function ManualViewerModal({ machine, onClose, onCacheReady }: ManualViewerModalProps) {
+  const { isMobile, isTablet } = useDeviceDetection();
   const [viewerSrc, setViewerSrc] = useState<string | null>(null);
   const [downloadSrc, setDownloadSrc] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -153,15 +155,34 @@ function ManualViewerModal({ machine, onClose, onCacheReady }: ManualViewerModal
     };
   }, [machine, onCacheReady]);
 
+  const isDesktop = !isMobile && !isTablet;
+
+  const overlayPaddingClass = isDesktop ? 'p-4 lg:p-6' : isTablet ? 'p-2 sm:p-3' : 'p-0';
+  const shellClass = isDesktop
+    ? 'mx-auto flex h-[calc(100dvh-2rem)] w-[calc(100vw-3rem)] max-w-none flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl'
+    : isTablet
+    ? 'mx-auto flex h-[calc(100dvh-1rem)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl'
+    : 'mx-auto flex h-[100dvh] w-full max-w-none flex-col overflow-hidden bg-white shadow-none';
+  const contentFrameClass = isDesktop
+    ? 'h-[calc(100dvh-14.5rem)] w-full'
+    : isTablet
+    ? 'h-[72dvh] w-full'
+    : 'h-[62dvh] w-full';
+  const innerContentClass = isDesktop
+    ? 'flex h-full w-full flex-col gap-4'
+    : isTablet
+    ? 'mx-auto flex h-full w-full max-w-5xl flex-col gap-4'
+    : 'flex h-full w-full flex-col gap-3';
+
   return (
-    <div className="fixed inset-0 z-[70] bg-slate-950/70 backdrop-blur-sm p-0 sm:p-4" onClick={onClose}>
+    <div className={`fixed inset-0 z-[70] bg-slate-950/70 backdrop-blur-sm ${overlayPaddingClass}`} onClick={onClose}>
       <motion.div
         initial={{ opacity: 0, y: 18, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 18, scale: 0.98 }}
         transition={{ duration: 0.18 }}
         onClick={(event) => event.stopPropagation()}
-        className="mx-auto flex h-[100dvh] w-full max-w-6xl flex-col overflow-hidden bg-white shadow-2xl sm:h-[calc(100dvh-2rem)] sm:rounded-[28px]"
+        className={shellClass}
       >
         <div className="border-b border-slate-200 bg-white px-4 py-3 sm:px-6 sm:py-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -213,7 +234,7 @@ function ManualViewerModal({ machine, onClose, onCacheReady }: ManualViewerModal
         </div>
 
         <div className="flex-1 overflow-auto bg-slate-100 px-3 py-3 sm:px-5 sm:py-5">
-          <div className="mx-auto flex h-full w-full max-w-5xl flex-col gap-4">
+          <div className={innerContentClass}>
             {errorMessage && (
               <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                 {typeof navigator !== 'undefined' && !navigator.onLine ? <WifiOff size={18} className="mt-0.5 shrink-0" /> : <BookOpen size={18} className="mt-0.5 shrink-0" />}
@@ -233,7 +254,7 @@ function ManualViewerModal({ machine, onClose, onCacheReady }: ManualViewerModal
                 <iframe
                   src={viewerSrc}
                   title={`Manual ${machine.name}`}
-                  className="h-[68dvh] w-full sm:h-[72dvh]"
+                  className={contentFrameClass}
                 />
               </div>
             ) : (

@@ -179,13 +179,21 @@ export default function ServiceOrders() {
   const canFinalizeOrder = (order: ServiceOrder) => {
     if (!user) return false;
     if (isAdmin) return true;
-    return order.operator_id === user.id;
+
+    if (order.operator_id === user.id) return true;
+
+    const assignedUserId = getEffectiveAssignedUserId(order);
+    return Boolean(assignedUserId && assignedUserId === user.id);
   };
 
   const canEditOrder = (order: ServiceOrder) => {
     if (!user) return false;
     if (isAdmin) return true;
-    return order.operator_id === user.id;
+
+    if (order.operator_id === user.id) return true;
+
+    const assignedUserId = getEffectiveAssignedUserId(order);
+    return Boolean(assignedUserId && assignedUserId === user.id);
   };
 
   const canReopenOrder = () => isAdmin;
@@ -816,6 +824,10 @@ export default function ServiceOrders() {
 
   const startOrderBreak = async (order: ServiceOrder) => {
     if (!user) return;
+    if (!canFinalizeOrder(order)) {
+      toast.error('Você não tem permissão para iniciar intervalo nesta O.S.');
+      return;
+    }
 
     const currentBreak = orderBreaks[order.id];
     if (currentBreak?.activeStartMs && currentBreak?.activeEndMs && Date.now() < currentBreak.activeEndMs) {
@@ -856,6 +868,10 @@ export default function ServiceOrders() {
 
   const pauseOrderBreak = async (order: ServiceOrder) => {
     if (!user) return;
+    if (!canFinalizeOrder(order)) {
+      toast.error('Você não tem permissão para pausar intervalo nesta O.S.');
+      return;
+    }
 
     const currentBreak = orderBreaks[order.id];
     if (!currentBreak?.activeStartMs || !currentBreak?.activeEndMs) {
@@ -895,6 +911,10 @@ export default function ServiceOrders() {
 
   const resumeOrderBreak = async (order: ServiceOrder) => {
     if (!user) return;
+    if (!canFinalizeOrder(order)) {
+      toast.error('Você não tem permissão para retomar intervalo nesta O.S.');
+      return;
+    }
 
     const currentBreak = orderBreaks[order.id];
     const remainingMs = Math.max(0, Number(currentBreak?.pausedRemainingMs || 0));

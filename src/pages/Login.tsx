@@ -5,7 +5,7 @@ import { ArrowRight } from 'lucide-react';
 import { motion } from 'motion/react';
 import { getUsers, loginUser } from '../lib/supabaseApi';
 import { LoginNumeric } from '../components/LoginNumeric';
-import brandLogo from '../assets/aguia-florestal-logo.svg';
+import brandLogo from '../../logo/logo.png';
 
 interface UserSummary {
   id: number;

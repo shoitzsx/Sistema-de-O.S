@@ -2,8 +2,7 @@ import React, { useRef } from 'react';
 import { X, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import html2pdf from 'html2pdf.js';
-import brandLogo from '../assets/aguia-florestal-logo.svg';
-import brandLogoMono from '../assets/aguia-florestal-logo-mono.svg';
+import brandLogo from '../../logo/logo.png';
 
 interface ServiceOrder {
     id: number;
@@ -186,7 +185,7 @@ export default function ServiceOrderViewer({
                             >
                                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-[0.045]">
                                     <img
-                                        src={brandLogoMono}
+                                        src={brandLogo}
                                         alt=""
                                         aria-hidden="true"
                                         className="w-[78%] max-w-[560px] h-auto"

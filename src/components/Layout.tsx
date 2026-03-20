@@ -7,7 +7,7 @@ import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { getOfflineChecklistSyncSummary, processChecklistSyncQueue } from '../lib/offlineChecklist';
 import { getOfflineSyncSummary, processOfflineSyncQueue, clearAllQueueErrors } from '../lib/offlineSync';
-import brandLogo from '../assets/aguia-florestal-logo.svg';
+import brandLogo from '../../logo/logo.png';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();

@@ -13,7 +13,7 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['favicon.svg', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png', 'social-card.png'],
+        includeAssets: ['favicon-32x32.png', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png', 'social-card.png'],
         manifest: {
           name: 'Aguia Florestal',
           short_name: 'Aguia',

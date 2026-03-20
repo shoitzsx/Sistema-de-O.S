@@ -7,6 +7,7 @@ import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { getOfflineChecklistSyncSummary, processChecklistSyncQueue } from '../lib/offlineChecklist';
 import { getOfflineSyncSummary, processOfflineSyncQueue, clearAllQueueErrors } from '../lib/offlineSync';
+import brandLogo from '../assets/aguia-florestal-logo.svg';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
@@ -118,10 +119,17 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             >
               <ArrowLeft size={20} />
             </button>
-            <div className="w-8 h-8 bg-white/10 rounded-full flex items-center justify-center">
-              <span className="font-bold text-lg">A</span>
+            <img
+              src={brandLogo}
+              alt="Águia Florestal"
+              className="h-9 w-auto rounded-md bg-white px-1.5 py-1 shadow-sm"
+            />
+            <div className="min-w-0">
+              <h1 className="text-base sm:text-xl font-bold tracking-tight truncate">Águia Florestal</h1>
+              <p className="hidden sm:block text-[11px] text-emerald-100/90 uppercase tracking-[0.18em]">
+                Operacao e Manutencao
+              </p>
             </div>
-            <h1 className="text-base sm:text-xl font-bold tracking-tight truncate">Águia Florestal</h1>
           </div>
           
           <div className="flex items-center gap-2 sm:gap-4">

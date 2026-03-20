@@ -5,6 +5,7 @@ import { ArrowRight } from 'lucide-react';
 import { motion } from 'motion/react';
 import { getUsers, loginUser } from '../lib/supabaseApi';
 import { LoginNumeric } from '../components/LoginNumeric';
+import brandLogo from '../assets/aguia-florestal-logo.svg';
 
 interface UserSummary {
   id: number;
@@ -75,6 +76,13 @@ export default function Login() {
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
       <div className="max-w-md w-full">
         <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center rounded-2xl bg-white px-5 py-4 shadow-2xl shadow-black/20 mb-5">
+            <img
+              src={brandLogo}
+              alt="Águia Florestal"
+              className="h-24 sm:h-28 w-auto"
+            />
+          </div>
           <h1 className="text-3xl font-bold text-white mb-2">Águia Florestal</h1>
           <p className="text-slate-400">Selecione seu perfil para continuar</p>
         </div>

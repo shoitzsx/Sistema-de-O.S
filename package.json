@@ -9,8 +9,9 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
+    "brand:assets": "node scripts/generate-brand-assets.mjs",
     "start": "vite preview",
-    "mobile:sync": "npm run build && npx cap sync",
+    "mobile:sync": "npm run brand:assets && npm run build && npx cap sync",
     "mobile:android": "npm run mobile:sync && npx cap open android",
     "mobile:ios": "npm run mobile:sync && npx cap open ios"
   },
@@ -39,6 +40,7 @@
     "@types/node": "^22.14.0",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.11",
+    "sharp": "^0.34.4",
     "tailwindcss": "^4.1.14",
     "typescript": "~5.8.2",
     "vite": "^6.4.1"

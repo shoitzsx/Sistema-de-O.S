@@ -2188,6 +2188,8 @@ export default function ServiceOrders() {
           setViewingOrder(null);
         }}
         partsTool={partsTools}
+        breakState={viewingOrder ? orderBreaks[viewingOrder.id] : undefined}
+        breakLimitMinutes={breakMinutesAllowed}
       />
     </Layout>
   );

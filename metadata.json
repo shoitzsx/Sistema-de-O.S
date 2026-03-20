@@ -1,5 +1,7 @@
 {
   "name": "Águia Florestal PCM",
   "description": "Centralized maintenance management system for Águia Florestal, featuring equipment manuals, monthly checklists, and corrective maintenance tracking.",
+  "theme_color": "#065f46",
+  "background_color": "#f8fafc",
   "requestFramePermissions": []
 }

@@ -23,22 +23,44 @@ if (!officialLogo) {
   officialLogo = await fs.readFile(fallbackSvgPath);
 }
 
-const makeMonoLogo = async (size) => {
-  return sharp(officialLogo)
-    .resize(size, size, { fit: 'contain', background: '#ffffff' })
-    .grayscale()
-    .normalise()
-    .png()
-    .toBuffer();
+const makeTransparentLogo = async (width, height, options = {}) => {
+  const { monochrome = false, opacity = 1 } = options;
+  const { data, info } = await sharp(officialLogo)
+    .resize(width, height, { fit: 'contain', background: { r: 255, g: 255, b: 255, alpha: 0 } })
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  for (let index = 0; index < data.length; index += 4) {
+    const red = data[index];
+    const green = data[index + 1];
+    const blue = data[index + 2];
+    const alpha = data[index + 3];
+    const isNearWhite = red > 245 && green > 245 && blue > 245;
+
+    if (isNearWhite) {
+      data[index + 3] = 0;
+      continue;
+    }
+
+    if (monochrome) {
+      const luminance = Math.round(red * 0.299 + green * 0.587 + blue * 0.114);
+      const darkTone = Math.max(18, Math.round(luminance * 0.45));
+      data[index] = darkTone;
+      data[index + 1] = darkTone;
+      data[index + 2] = darkTone;
+    }
+
+    data[index + 3] = Math.max(0, Math.min(255, Math.round(alpha * opacity)));
+  }
+
+  return sharp(data, { raw: info }).png().toBuffer();
 };
 
 const makeSplash = async (width, height) => {
   const logoWidth = Math.round(Math.min(width * 0.72, 1200));
   const logoHeight = Math.round(height * 0.42);
-  const logoBuffer = await sharp(officialLogo)
-    .resize(logoWidth, logoHeight, { fit: 'contain', background: '#ffffff' })
-    .png()
-    .toBuffer();
+  const logoBuffer = await makeTransparentLogo(logoWidth, logoHeight);
 
   return sharp({
     create: {
@@ -63,6 +85,8 @@ if (!useOfficialLogo) {
 }
 
 const pngTargets = [
+  { kind: 'transparent', width: 220, height: 80, output: 'src/assets/logo-ui.png' },
+  { kind: 'watermark', width: 900, height: 320, output: 'src/assets/logo-watermark.png' },
   { kind: 'mono', width: 32, height: 32, output: 'public/favicon-32x32.png' },
   { kind: 'mono', width: 180, height: 180, output: 'public/apple-touch-icon.png' },
   { kind: 'mono', width: 192, height: 192, output: 'public/icon-192.png' },
@@ -89,8 +113,12 @@ for (const target of pngTargets) {
   const outputPath = path.join(root, target.output);
   await fs.mkdir(path.dirname(outputPath), { recursive: true });
   const input =
-    target.kind === 'mono'
-      ? await makeMonoLogo(Math.max(target.width, target.height))
+    target.kind === 'transparent'
+      ? await makeTransparentLogo(target.width, target.height)
+      : target.kind === 'watermark'
+        ? await makeTransparentLogo(target.width, target.height, { monochrome: true, opacity: 0.18 })
+      : target.kind === 'mono'
+        ? await makeTransparentLogo(target.width, target.height, { monochrome: true })
       : target.kind === 'splash'
         ? await makeSplash(target.width, target.height)
         : await sharp(officialLogo)

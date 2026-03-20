@@ -7,7 +7,7 @@ import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { getOfflineChecklistSyncSummary, processChecklistSyncQueue } from '../lib/offlineChecklist';
 import { getOfflineSyncSummary, processOfflineSyncQueue, clearAllQueueErrors } from '../lib/offlineSync';
-import brandLogo from '../../logo/logo.png';
+import brandLogo from '../assets/logo-ui.png';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
@@ -122,7 +122,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <img
               src={brandLogo}
               alt="Águia Florestal"
-              className="h-9 w-auto rounded-md bg-white px-1.5 py-1 shadow-sm"
+              className="h-8 sm:h-10 md:h-11 w-auto max-w-[112px] sm:max-w-[144px] object-contain shrink-0"
             />
             <div className="min-w-0">
               <h1 className="text-base sm:text-xl font-bold tracking-tight truncate">Águia Florestal</h1>

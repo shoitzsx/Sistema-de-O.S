@@ -2,7 +2,8 @@ import React, { useRef } from 'react';
 import { X, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import html2pdf from 'html2pdf.js';
-import brandLogo from '../../logo/logo.png';
+import brandLogo from '../assets/logo-ui.png';
+import brandWatermark from '../assets/logo-watermark.png';
 
 interface ServiceOrder {
     id: number;
@@ -185,10 +186,10 @@ export default function ServiceOrderViewer({
                             >
                                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-[0.045]">
                                     <img
-                                        src={brandLogo}
+                                        src={brandWatermark}
                                         alt=""
                                         aria-hidden="true"
-                                        className="w-[78%] max-w-[560px] h-auto"
+                                        className="w-[78%] max-w-[560px] h-auto object-contain"
                                     />
                                 </div>
                                 <div className="relative z-10">
@@ -199,13 +200,11 @@ export default function ServiceOrderViewer({
                                 {/* Document Header with Logo */}
                                 <div className="text-center border-b-2 border-slate-300 pb-6 mb-8">
                                     <div className="mb-5 flex justify-center">
-                                        <div className="rounded-2xl border border-emerald-100 bg-white px-4 py-3 shadow-sm">
-                                            <img
-                                                src={brandLogo}
-                                                alt="Águia Florestal"
-                                                className="h-20 sm:h-24 w-auto"
-                                            />
-                                        </div>
+                                        <img
+                                            src={brandLogo}
+                                            alt="Águia Florestal"
+                                            className="h-16 sm:h-20 w-auto max-w-[240px] object-contain"
+                                        />
                                     </div>
                                     <h1 className="text-3xl font-bold text-slate-900 mb-1">ORDEM DE SERVIÇO</h1>
                                     <p className="text-sm font-semibold text-emerald-600">Documento Operacional de Manutenção</p>

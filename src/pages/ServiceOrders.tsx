@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
-import { Plus, Clock, CheckCircle, AlertTriangle, Play, Square, X, Package, Search, BookmarkPlus } from 'lucide-react';
+import { Plus, Clock, CheckCircle, AlertTriangle, Play, Square, X, Package, Search, BookmarkPlus, Eye } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'react-toastify';
+import ServiceOrderViewer from '../components/ServiceOrderViewer';
 import { 
   getServiceOrders, 
   getMachines, 
@@ -159,6 +160,8 @@ export default function ServiceOrders() {
   const [orderBreaks, setOrderBreaks] = useState<Record<number, ServiceOrderBreakState>>(() => readOrderBreaks());
   const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
   const [orderRoutingById, setOrderRoutingById] = useState<Record<number, OrderRoutingMeta>>({});
+  const [viewingOrder, setViewingOrder] = useState<ServiceOrder | null>(null);
+  const [isViewerOpen, setIsViewerOpen] = useState(false);
   const [newOrder, setNewOrder] = useState({
   machine_id: '',
   maintenance_type: 'corretiva' as 'preventiva' | 'corretiva',
@@ -1402,6 +1405,15 @@ export default function ServiceOrders() {
               </div>
 
               <div className="flex flex-col gap-2">
+                <button
+                  onClick={() => {
+                    setViewingOrder(order);
+                    setIsViewerOpen(true);
+                  }}
+                  className="bg-emerald-100 hover:bg-emerald-200 text-emerald-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 justify-center"
+                >
+                  <Eye size={16} /> Visualizar
+                </button>
                 {order.status === 'open' ? (
                   hasWorkStarted(order.id) ? (
                     canFinalizeOrder(order) && (
@@ -1458,7 +1470,16 @@ export default function ServiceOrders() {
                     </>
                   )
                 ) : (
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
+                    <button
+                      onClick={() => {
+                        setViewingOrder(order);
+                        setIsViewerOpen(true);
+                      }}
+                      className="bg-emerald-100 hover:bg-emerald-200 text-emerald-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                    >
+                      <Eye size={16} /> Visualizar
+                    </button>
                     {canEditOrder(order) && (
                       <button
                         onClick={() => {
@@ -2157,6 +2178,17 @@ export default function ServiceOrders() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Service Order Viewer Modal */}
+      <ServiceOrderViewer
+        order={viewingOrder}
+        isOpen={isViewerOpen}
+        onClose={() => {
+          setIsViewerOpen(false);
+          setViewingOrder(null);
+        }}
+        partsTool={partsTools}
+      />
     </Layout>
   );
 }

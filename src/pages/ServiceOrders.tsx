@@ -2188,8 +2188,9 @@ export default function ServiceOrders() {
           setViewingOrder(null);
         }}
         partsTool={partsTools}
-        breakState={viewingOrder ? orderBreaks[viewingOrder.id] : undefined}
-        breakLimitMinutes={breakMinutesAllowed}
+        breakMinutesAllowed={breakMinutesAllowed}
+        currentBreakState={viewingOrder ? orderBreaks[viewingOrder.id] || null : null}
+        routingMeta={viewingOrder ? orderRoutingById[viewingOrder.id] || null : null}
       />
     </Layout>
   );

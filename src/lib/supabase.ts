@@ -12,10 +12,19 @@ export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '');
 // Tipos para TypeScript
 export interface User {
   id: number;
+  auth_user_id?: string | null;
+  auth_email?: string | null;
   name: string;
   username: string;
   role: 'admin' | 'operator';
   allowed_modules: number[];
+}
+
+export interface LoginDirectoryUser {
+  id: number;
+  name: string;
+  username: string;
+  role: 'admin' | 'operator';
 }
 
 export interface Machine {
@@ -40,6 +49,9 @@ export interface ServiceOrder {
   technician_name: string;
   component: string;
   description: string;
+  problem_cause?: string | null;
+  service_executed?: string | null;
+  observations?: string | null;
   tools: string[];
   used_parts_tools: number[];
   start_time: string;
@@ -65,6 +77,12 @@ export interface Checklist {
   date: string;
   status: 'pending' | 'completed';
   data: Record<string, unknown>;
+  checklist_started_at?: string | null;
+  checklist_finished_at?: string | null;
+  schedule_id?: number | string | null;
+  schedule_confirmed_at?: string | null;
+  schedule_confirmed_by?: number | null;
+  schedule_confirmed_by_name?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -87,8 +105,12 @@ export interface ChecklistSchedule {
   operator_name: string;
   scheduled_date: string;
   notes?: string;
-  status: 'pending' | 'completed' | 'cancelled';
+  status: 'draft' | 'confirmed' | 'completed' | 'cancelled';
+  confirmed_at?: string | null;
+  confirmed_by?: number | null;
+  confirmed_by_name?: string | null;
   completed_at?: string | null;
+  completed_checklist_id?: number | string | null;
   created_by_id: number;
   created_by_name: string;
   created_at?: string;

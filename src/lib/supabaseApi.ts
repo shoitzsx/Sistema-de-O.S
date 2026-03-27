@@ -1,4 +1,5 @@
-import { supabase, ServiceOrder, Machine, PartTool, User, ChecklistSchedule, UserNotification } from './supabase';
+import { supabase, ServiceOrder, Machine, PartTool, User, ChecklistSchedule, UserNotification, LoginDirectoryUser } from './supabase';
+import { buildAuthEmail } from './authUtils';
 import {
   getUnsyncedChecklists,
   processChecklistSyncQueue,
@@ -48,8 +49,50 @@ function isWritePermissionError(err: unknown): boolean {
 function normalizeUser(user: any): User {
   return {
     ...user,
+    auth_user_id: user.auth_user_id ? String(user.auth_user_id) : null,
+    auth_email: user.auth_email ? String(user.auth_email) : null,
     allowed_modules: safeParseJson<number[]>(user.allowed_modules, []),
   };
+}
+
+const ADMIN_API_BASE = ((import.meta.env.VITE_ADMIN_API_BASE_URL as string | undefined) || '').replace(/\/$/, '');
+
+async function getCurrentAccessToken(): Promise<string | null> {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token || null;
+}
+
+async function requestAdminApi<T>(path: string, init: RequestInit): Promise<T> {
+  if (!isBrowserOnline()) {
+    throw new Error('Operacao indisponivel offline. Conecte-se para gerenciar usuarios.');
+  }
+
+  const accessToken = await getCurrentAccessToken();
+  if (!accessToken) {
+    throw new Error('Sessao expirada. Faca login novamente.');
+  }
+
+  const response = await fetch(`${ADMIN_API_BASE}${path}`, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+      ...(init.headers || {}),
+    },
+  });
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const error = new Error(payload?.error || 'Falha ao executar operacao administrativa.') as Error & {
+      status?: number;
+      code?: string;
+    };
+    error.status = response.status;
+    error.code = payload?.code;
+    throw error;
+  }
+
+  return payload as T;
 }
 
 function isAdminRole(role: unknown): boolean {
@@ -101,6 +144,52 @@ function stripAssignedFields<T extends Record<string, unknown>>(payload: T): T {
   const copy = { ...payload };
   delete (copy as any).assigned_user_id;
   delete (copy as any).assigned_user_name;
+  return copy;
+}
+
+function isMissingServiceOrderExtendedColumnsError(err: unknown): boolean {
+  const apiError = err as { code?: string; message?: string; details?: string; hint?: string };
+  const combined = `${apiError?.message || ''} ${apiError?.details || ''} ${apiError?.hint || ''}`.toLowerCase();
+
+  return (
+    apiError?.code === '42703' ||
+    combined.includes('problem_cause') ||
+    combined.includes('service_executed') ||
+    combined.includes('observations')
+  );
+}
+
+function stripExtendedServiceOrderFields<T extends Record<string, unknown>>(payload: T): T {
+  const copy = { ...payload };
+  delete (copy as any).problem_cause;
+  delete (copy as any).service_executed;
+  delete (copy as any).observations;
+  return copy;
+}
+
+function isMissingChecklistLifecycleColumnsError(err: unknown): boolean {
+  const apiError = err as { code?: string; message?: string; details?: string; hint?: string };
+  const combined = `${apiError?.message || ''} ${apiError?.details || ''} ${apiError?.hint || ''}`.toLowerCase();
+
+  return (
+    apiError?.code === '42703' ||
+    combined.includes('checklist_started_at') ||
+    combined.includes('checklist_finished_at') ||
+    combined.includes('schedule_confirmed_at') ||
+    combined.includes('schedule_confirmed_by') ||
+    combined.includes('schedule_confirmed_by_name') ||
+    combined.includes('schedule_id')
+  );
+}
+
+function stripChecklistLifecycleFields<T extends Record<string, unknown>>(payload: T): T {
+  const copy = { ...payload };
+  delete (copy as any).checklist_started_at;
+  delete (copy as any).checklist_finished_at;
+  delete (copy as any).schedule_id;
+  delete (copy as any).schedule_confirmed_at;
+  delete (copy as any).schedule_confirmed_by;
+  delete (copy as any).schedule_confirmed_by_name;
   return copy;
 }
 
@@ -160,6 +249,9 @@ function sortChecklistSchedules(rows: ChecklistSchedule[]): ChecklistSchedule[] 
 }
 
 function normalizeChecklistSchedule(raw: any, syncStatus: 'synced' | 'local-only' = 'synced'): ChecklistSchedule {
+  const rawStatus = String(raw.status || 'draft');
+  const normalizedStatus = rawStatus === 'pending' ? 'confirmed' : rawStatus;
+
   return {
     id: raw.id,
     machine_id: Number(raw.machine_id),
@@ -168,8 +260,12 @@ function normalizeChecklistSchedule(raw: any, syncStatus: 'synced' | 'local-only
     operator_name: String(raw.operator_name || 'Operador'),
     scheduled_date: String(raw.scheduled_date || new Date().toISOString().slice(0, 10)),
     notes: raw.notes ? String(raw.notes) : '',
-    status: (raw.status || 'pending') as ChecklistSchedule['status'],
+    status: normalizedStatus as ChecklistSchedule['status'],
+    confirmed_at: raw.confirmed_at || null,
+    confirmed_by: raw.confirmed_by ? Number(raw.confirmed_by) : null,
+    confirmed_by_name: raw.confirmed_by_name ? String(raw.confirmed_by_name) : null,
     completed_at: raw.completed_at || null,
+    completed_checklist_id: raw.completed_checklist_id ?? null,
     created_by_id: Number(raw.created_by_id || 0),
     created_by_name: String(raw.created_by_name || 'Administrador'),
     created_at: String(raw.created_at || new Date().toISOString()),
@@ -222,39 +318,106 @@ async function uploadWithBucketFallback(
 export async function loginUser(username: string, password: string): Promise<User | null> {
   try {
     if (!isBrowserOnline()) {
-      const cachedUsers = getCachedRows<any>('users').map(normalizeUser);
-      const offlineMatch = cachedUsers.find((u: any) => u.username === username && (u as any).password === password);
-      return offlineMatch || null;
-    }
-
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('username', username)
-      .eq('password', password)
-      .maybeSingle();
-
-    if (error) {
-      // Credentials mismatch should not spam console as transport error.
-      if (error.code !== 'PGRST116') {
-        console.error('Erro ao fazer login:', error);
-      }
       return null;
     }
 
-    if (!data) return null;
+    const authEmail = buildAuthEmail(username);
+    const { error } = await supabase.auth.signInWithPassword({
+      email: authEmail,
+      password,
+    });
 
-    const normalized = normalizeUser(data);
-    upsertCachedRow('users', data as any);
-    return normalized;
+    if (error) {
+      console.error('Erro ao fazer login:', error);
+      return null;
+    }
+
+    return getCurrentUserProfile();
   } catch (err) {
     console.error('Erro ao fazer login:', err);
+    return null;
+  }
+}
+
+export async function getCurrentUserProfile(): Promise<User | null> {
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session?.user) {
+      return null;
+    }
 
     const cachedUsers = getCachedRows<any>('users').map(normalizeUser);
-    const offlineMatch = cachedUsers.find((u: any) => u.username === username && (u as any).password === password);
-    if (offlineMatch) return offlineMatch;
+    if (!isBrowserOnline()) {
+      return (
+        cachedUsers.find((user) => user.auth_user_id === session.user.id)
+        || cachedUsers.find((user) => (user.auth_email || buildAuthEmail(user.username)) === session.user.email)
+        || null
+      );
+    }
 
+    let query = supabase
+      .from('users')
+      .select('*')
+      .eq('auth_user_id', session.user.id)
+      .maybeSingle();
+
+    let { data, error } = await query;
+
+    if ((!data || error) && session.user.email) {
+      const fallback = await supabase
+        .from('users')
+        .select('*')
+        .eq('auth_email', session.user.email)
+        .maybeSingle();
+
+      data = fallback.data;
+      error = fallback.error;
+    }
+
+    if (error) throw error;
+    if (!data) return null;
+
+    upsertCachedRow('users', data as any);
+    return normalizeUser(data);
+  } catch (err) {
+    console.error('Erro ao buscar perfil autenticado:', err);
     return null;
+  }
+}
+
+export async function getLoginDirectory(): Promise<LoginDirectoryUser[]> {
+  const fromCache = () =>
+    sortUsersWithAdminFirst(getCachedRows<any>('users').map(normalizeUser)).map((user) => ({
+      id: user.id,
+      name: user.name,
+      username: user.username,
+      role: user.role,
+    }));
+
+  if (!isBrowserOnline()) {
+    return fromCache();
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('login_directory')
+      .select('id, name, username, role')
+      .order('name', { ascending: true });
+
+    if (error) throw error;
+
+    return (data || []).map((user: any) => ({
+      id: Number(user.id),
+      name: String(user.name || ''),
+      username: String(user.username || ''),
+      role: String(user.role || 'operator') as LoginDirectoryUser['role'],
+    }));
+  } catch (err) {
+    console.error('Erro ao carregar diretório de login:', err);
+    return fromCache();
   }
 }
 
@@ -291,156 +454,46 @@ export async function getUsers(): Promise<User[]> {
 }
 
 export async function createUser(user: Omit<User & { password: string }, 'id'>): Promise<User | null> {
-  const userData = {
-    ...user,
-    allowed_modules: JSON.stringify(user.allowed_modules || [])
-  };
-
   try {
-    if (!isBrowserOnline()) {
-      const tempId = queueInsert('users', 'users', userData as any);
-      const localRow = { id: tempId, ...userData, sync_status: 'local-only' } as any;
-      upsertCachedRow('users', localRow);
-      return normalizeUser(localRow);
-    }
+    const data = await requestAdminApi<{ user: any }>('/api/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(user),
+    });
 
-    const { data, error, status } = await supabase
-      .from('users')
-      .insert([userData])
-      .select()
-      .single();
-
-    if (error || status === 401 || status === 403) {
-      if (status === 401 || status === 403 || (error && (error.code === '42501' || isWritePermissionError(error)))) {
-        const tempId = queueInsert('users', 'users', userData as any);
-        const localRow = { id: tempId, ...userData, sync_status: 'local-only' } as any;
-        upsertCachedRow('users', localRow);
-        return normalizeUser(localRow);
-      }
-      if (error) throw error;
-    }
-
-    if (!data) return null;
-
-    upsertCachedRow('users', data as any);
-    void processOfflineSyncQueue();
-    return normalizeUser(data);
+    upsertCachedRow('users', data.user as any);
+    return normalizeUser(data.user);
   } catch (err) {
     console.error('Erro ao criar usuário:', err);
-
-    if (isWritePermissionError(err)) {
-      const tempId = queueInsert('users', 'users', userData as any);
-      const localRow = { id: tempId, ...userData, sync_status: 'local-only' } as any;
-      upsertCachedRow('users', localRow);
-      return normalizeUser(localRow);
-    }
-
     throw err;
   }
 }
 
 export async function updateUser(id: number, updates: Partial<User & { password?: string }>): Promise<User | null> {
-  const updateData: Record<string, unknown> = {};
-  
-  if (updates.name !== undefined) updateData.name = updates.name;
-  if (updates.username !== undefined) updateData.username = updates.username;
-  if (updates.password !== undefined) updateData.password = updates.password;
-  if (updates.role !== undefined) updateData.role = updates.role;
-  if (updates.allowed_modules !== undefined) updateData.allowed_modules = JSON.stringify(updates.allowed_modules || []);
-
   try {
-    if (!isBrowserOnline()) {
-      queueUpdate('users', 'users', id, updateData);
-      const cached = getCachedRows<any>('users');
-      const existing = cached.find((u) => u.id === id);
-      if (existing) {
-        const merged = { ...existing, ...updateData, sync_status: 'local-only' };
-        upsertCachedRow('users', merged);
-        return normalizeUser(merged);
-      }
-      return null;
-    }
+    const data = await requestAdminApi<{ user: any }>('/api/admin/users', {
+      method: 'PUT',
+      body: JSON.stringify({ id, ...updates }),
+    });
 
-    const { data, error, status } = await supabase
-      .from('users')
-      .update(updateData)
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error || status === 401 || status === 403) {
-      if (status === 401 || status === 403 || (error && (error.code === '42501' || isWritePermissionError(error)))) {
-        queueUpdate('users', 'users', id, updateData);
-        const cached = getCachedRows<any>('users');
-        const existing = cached.find((u) => u.id === id);
-        if (existing) {
-          const merged = { ...existing, ...updateData, sync_status: 'local-only' };
-          upsertCachedRow('users', merged);
-          return normalizeUser(merged);
-        }
-        return null;
-      }
-      if (error) throw error;
-    }
-
-    if (!data) return null;
-
-    upsertCachedRow('users', data as any);
-    void processOfflineSyncQueue();
-    return normalizeUser(data);
+    upsertCachedRow('users', data.user as any);
+    return normalizeUser(data.user);
   } catch (err) {
     console.error('Erro ao atualizar usuário:', err);
-
-    if (isWritePermissionError(err)) {
-      queueUpdate('users', 'users', id, updateData);
-      const cached = getCachedRows<any>('users');
-      const existing = cached.find((u) => u.id === id);
-      if (existing) {
-        const merged = { ...existing, ...updateData, sync_status: 'local-only' };
-        upsertCachedRow('users', merged);
-        return normalizeUser(merged);
-      }
-      return null;
-    }
-
     throw err;
   }
 }
 
 export async function deleteUser(id: number): Promise<boolean> {
   try {
-    if (!isBrowserOnline()) {
-      queueDelete('users', 'users', id);
-      removeCachedRow<any>('users', id);
-      return true;
-    }
-
-    const { error, status } = await supabase
-      .from('users')
-      .delete()
-      .eq('id', id);
-
-    if (error || status === 401 || status === 403) {
-      if (status === 401 || status === 403 || (error && (error.code === '42501' || isWritePermissionError(error)))) {
-        queueDelete('users', 'users', id);
-        removeCachedRow<any>('users', id);
-        return true;
-      }
-      if (error) throw error;
-    }
+    await requestAdminApi<{ success: boolean }>('/api/admin/users', {
+      method: 'DELETE',
+      body: JSON.stringify({ id }),
+    });
 
     removeCachedRow<any>('users', id);
-    void processOfflineSyncQueue();
     return true;
   } catch (err) {
     console.error('Erro ao deletar usuário:', err);
-
-    if (isWritePermissionError(err)) {
-      queueDelete('users', 'users', id);
-      removeCachedRow<any>('users', id);
-      return true;
-    }
-
     return false;
   }
 }
@@ -586,6 +639,9 @@ export async function createServiceOrder(order: Omit<ServiceOrder, 'id' | 'creat
   try {
     const orderToInsert = {
       ...order,
+      problem_cause: order.problem_cause || null,
+      service_executed: order.service_executed || null,
+      observations: order.observations || null,
       tools: JSON.stringify(order.tools || []),
       used_parts_tools: JSON.stringify(order.used_parts_tools || [])
     };
@@ -612,11 +668,11 @@ export async function createServiceOrder(order: Omit<ServiceOrder, 'id' | 'creat
       .single();
 
     if (firstTry.error) {
-      if (!isMissingAssignedColumnsError(firstTry.error)) {
+      if (!isMissingAssignedColumnsError(firstTry.error) && !isMissingServiceOrderExtendedColumnsError(firstTry.error)) {
         throw firstTry.error;
       }
 
-      const fallbackPayload = stripAssignedFields(orderToInsert as any);
+      const fallbackPayload = stripExtendedServiceOrderFields(stripAssignedFields(orderToInsert as any));
       const fallbackTry = await supabase
         .from('service_orders')
         .insert([fallbackPayload])
@@ -653,6 +709,9 @@ export async function updateServiceOrder(id: number, updates: Partial<ServiceOrd
     if (updates.tools !== undefined) updateData.tools = JSON.stringify(updates.tools || []);
     if (updates.used_parts_tools !== undefined) updateData.used_parts_tools = JSON.stringify(updates.used_parts_tools || []);
     if (updates.component !== undefined) updateData.component = updates.component;
+    if (updates.problem_cause !== undefined) updateData.problem_cause = updates.problem_cause;
+    if (updates.service_executed !== undefined) updateData.service_executed = updates.service_executed;
+    if (updates.observations !== undefined) updateData.observations = updates.observations;
     if (updates.status !== undefined) updateData.status = updates.status;
     if (updates.end_time !== undefined) updateData.end_time = updates.end_time;
     if (updates.start_time !== undefined) updateData.start_time = updates.start_time;
@@ -681,11 +740,11 @@ export async function updateServiceOrder(id: number, updates: Partial<ServiceOrd
       .single();
 
     if (firstTry.error) {
-      if (!isMissingAssignedColumnsError(firstTry.error)) {
+      if (!isMissingAssignedColumnsError(firstTry.error) && !isMissingServiceOrderExtendedColumnsError(firstTry.error)) {
         throw firstTry.error;
       }
 
-      const fallbackUpdateData = stripAssignedFields(updateData as any);
+      const fallbackUpdateData = stripExtendedServiceOrderFields(stripAssignedFields(updateData as any));
       const fallbackTry = await supabase
         .from('service_orders')
         .update(fallbackUpdateData)
@@ -768,27 +827,18 @@ export async function verifyUserCredentials(
 ): Promise<boolean> {
   try {
     if (!isBrowserOnline()) {
-      const cachedUsers = getCachedRows<any>('users').map(normalizeUser);
-      const match = cachedUsers.find((u: any) => {
-        const roleOk = requiredRole ? u.role === requiredRole : true;
-        return u.username === username && (u as any).password === password && roleOk;
-      });
-      return Boolean(match);
+      return false;
     }
 
-    let query = supabase
-      .from('users')
-      .select('id')
-      .eq('username', username)
-      .eq('password', password);
-
-    if (requiredRole) {
-      query = query.eq('role', requiredRole);
-    }
-
-    const { data, error } = await query.limit(1);
-    if (error) throw error;
-    return !!data && data.length > 0;
+    const response = await requestAdminApi<{ valid: boolean }>('/api/admin/verify-credentials', {
+      method: 'POST',
+      body: JSON.stringify({
+        username,
+        password,
+        requiredRole,
+      }),
+    });
+    return Boolean(response.valid);
   } catch (err) {
     console.error('Erro ao validar credenciais do usuário:', err);
     return false;
@@ -883,7 +933,13 @@ export async function createChecklist(checklist: any): Promise<any> {
     operator_id: checklist.operator_id,
     date: checklist.date,
     status: checklist.status,
-    data: checklist.data || {}
+    data: checklist.data || {},
+    checklist_started_at: checklist.checklist_started_at || null,
+    checklist_finished_at: checklist.checklist_finished_at || null,
+    schedule_id: checklist.schedule_id ?? null,
+    schedule_confirmed_at: checklist.schedule_confirmed_at || null,
+    schedule_confirmed_by: checklist.schedule_confirmed_by ?? null,
+    schedule_confirmed_by_name: checklist.schedule_confirmed_by_name || null,
   };
 
   const enqueueAndReturn = async () => {
@@ -905,7 +961,22 @@ export async function createChecklist(checklist: any): Promise<any> {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      if (!isMissingChecklistLifecycleColumnsError(error)) throw error;
+
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from('checklists')
+        .insert([{
+          ...stripChecklistLifecycleFields(payload),
+          data: JSON.stringify(payload.data || {})
+        }])
+        .select()
+        .single();
+
+      if (fallbackError) throw fallbackError;
+      void processChecklistSyncQueue();
+      return fallbackData;
+    }
 
     void processChecklistSyncQueue();
     return data;
@@ -937,7 +1008,7 @@ export async function getChecklistSchedules(params?: {
       if (!includePast && row.status === 'completed') return false;
       if (!includePast) {
         const day = new Date(`${row.scheduled_date}T00:00:00`).getTime();
-        if (Number.isFinite(day) && day < startOfToday.getTime() && row.status !== 'pending') return false;
+        if (Number.isFinite(day) && day < startOfToday.getTime() && row.status === 'cancelled') return false;
       }
       return true;
     });
@@ -997,7 +1068,10 @@ export async function createChecklistSchedule(input: {
     operator_name: input.operator_name,
     scheduled_date: input.scheduled_date,
     notes: input.notes || '',
-    status: 'pending',
+    status: 'draft',
+    confirmed_at: null,
+    confirmed_by: null,
+    confirmed_by_name: null,
     created_by_id: input.created_by_id,
     created_by_name: input.created_by_name,
   };
@@ -1028,8 +1102,12 @@ export async function createChecklistSchedule(input: {
   const localRow: ChecklistSchedule = {
     id: `cs_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     ...payload,
-    status: 'pending',
+    status: 'draft',
+    confirmed_at: null,
+    confirmed_by: null,
+    confirmed_by_name: null,
     completed_at: null,
+    completed_checklist_id: null,
     created_at: new Date().toISOString(),
     sync_status: 'local-only',
   };
@@ -1037,6 +1115,86 @@ export async function createChecklistSchedule(input: {
   const current = readLocalChecklistSchedules();
   writeLocalChecklistSchedules([localRow, ...current]);
   return localRow;
+}
+
+export async function updateChecklistScheduleStatus(input: {
+  scheduleId: number | string;
+  status: ChecklistSchedule['status'];
+  actingUserId: number;
+  actingUserName: string;
+  completedChecklistId?: number | string | null;
+}): Promise<ChecklistSchedule | null> {
+  const nowIso = new Date().toISOString();
+  const updates: Record<string, unknown> = {
+    status: input.status,
+  };
+
+  if (input.status === 'confirmed') {
+    updates.confirmed_at = nowIso;
+    updates.confirmed_by = input.actingUserId;
+    updates.confirmed_by_name = input.actingUserName;
+  }
+
+  if (input.status === 'completed') {
+    updates.completed_at = nowIso;
+    updates.completed_checklist_id = input.completedChecklistId ?? null;
+  }
+
+  if (isBrowserOnline() && isChecklistSchedulesRemoteEnabled() && typeof input.scheduleId === 'number') {
+    try {
+      const { data, error } = await supabase
+        .from('checklist_schedules')
+        .update(updates)
+        .eq('id', input.scheduleId)
+        .select()
+        .single();
+
+      if (!error && data) {
+        return normalizeChecklistSchedule(data, 'synced');
+      }
+
+      if (error && (error.code === 'PGRST205' || error.code === '42P01')) {
+        disableChecklistSchedulesRemote();
+      }
+    } catch (err: any) {
+      const message = String(err?.message || '');
+      if (message.includes('404') || message.toLowerCase().includes('checklist_schedules')) {
+        disableChecklistSchedulesRemote();
+      }
+    }
+  }
+
+  const current = readLocalChecklistSchedules();
+  let updatedRow: ChecklistSchedule | null = null;
+  const next = current.map((item) => {
+    if (String(item.id) !== String(input.scheduleId)) {
+      return item;
+    }
+
+    const merged: ChecklistSchedule = {
+      ...item,
+      status: input.status,
+      ...(input.status === 'confirmed'
+        ? {
+            confirmed_at: nowIso,
+            confirmed_by: input.actingUserId,
+            confirmed_by_name: input.actingUserName,
+          }
+        : {}),
+      ...(input.status === 'completed'
+        ? {
+            completed_at: nowIso,
+            completed_checklist_id: input.completedChecklistId ?? null,
+          }
+        : {}),
+    };
+
+    updatedRow = merged;
+    return merged;
+  });
+
+  writeLocalChecklistSchedules(next);
+  return updatedRow;
 }
 
 // --- User Notifications ---
@@ -1121,7 +1279,11 @@ export async function clearAllUserNotifications(userId: number): Promise<void> {
   }
 }
 
-export async function completeChecklistSchedulesForMachine(operatorId: number, machineId: number): Promise<void> {
+export async function completeChecklistSchedulesForMachine(
+  operatorId: number,
+  machineId: number,
+  completedChecklistId?: number | string | null
+): Promise<void> {
   const nowIso = new Date().toISOString();
   const todayIso = nowIso.slice(0, 10);
 
@@ -1129,10 +1291,10 @@ export async function completeChecklistSchedulesForMachine(operatorId: number, m
     try {
       const { error } = await supabase
         .from('checklist_schedules')
-        .update({ status: 'completed', completed_at: nowIso })
+        .update({ status: 'completed', completed_at: nowIso, completed_checklist_id: completedChecklistId ?? null })
         .eq('operator_id', operatorId)
         .eq('machine_id', machineId)
-        .eq('status', 'pending')
+        .in('status', ['confirmed', 'pending'])
         .lte('scheduled_date', todayIso);
 
       if (!error) return;
@@ -1150,7 +1312,8 @@ export async function completeChecklistSchedulesForMachine(operatorId: number, m
 
   const current = readLocalChecklistSchedules();
   const next = current.map((item) => {
-    if (item.operator_id !== operatorId || item.machine_id !== machineId || item.status !== 'pending') {
+    const currentStatus = String(item.status || '');
+    if (item.operator_id !== operatorId || item.machine_id !== machineId || !['confirmed', 'pending'].includes(currentStatus)) {
       return item;
     }
 
@@ -1162,6 +1325,7 @@ export async function completeChecklistSchedulesForMachine(operatorId: number, m
       ...item,
       status: 'completed' as const,
       completed_at: nowIso,
+      completed_checklist_id: completedChecklistId ?? null,
     };
   });
 

@@ -41,6 +41,9 @@ interface ServiceOrder {
   maintenance_type: 'preventiva' | 'corretiva';
   technician_name: string;
   description: string;
+  problem_cause?: string | null;
+  service_executed?: string | null;
+  observations?: string | null;
   tools: string[];
   used_parts_tools?: number[];
   component: string;
@@ -133,6 +136,7 @@ export default function ServiceOrders() {
   const [editReportModalOpen, setEditReportModalOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<ServiceOrder | null>(null);
   const [editReport, setEditReport] = useState('');
+  const [editObservations, setEditObservations] = useState('');
   const [editReason, setEditReason] = useState('');
   const [editTools, setEditTools] = useState<string[]>([]);
   const [editToolsInput, setEditToolsInput] = useState('');
@@ -559,6 +563,9 @@ export default function ServiceOrders() {
         technician_name: technicianName,
         component: newOrder.component,
         description: newOrder.description,
+        problem_cause: newOrder.description,
+        service_executed: null,
+        observations: null,
         machine_name: machine.name,
         operator_id: user.id,
         operator_name: user.name,
@@ -602,6 +609,7 @@ export default function ServiceOrders() {
             machine_name: machine.name,
             component: newOrder.component,
             maintenance_type: newOrder.maintenance_type,
+            problem_cause: newOrder.description,
             queue_started_at: queueStartedAt,
             assigned_user_id: selectedResponsible?.id ?? null,
             assigned_user_name: selectedResponsible?.name ?? null,
@@ -746,7 +754,9 @@ export default function ServiceOrders() {
     if (!user) return;
 
     const resolutionText = finishReason.trim();
-    if (!resolutionText && !allowWithoutResolution) {
+    const executedService = finalReport.trim();
+
+    if (!executedService && !allowWithoutResolution) {
       setShowFinishWithoutResolutionConfirm(true);
       return;
     }
@@ -760,10 +770,18 @@ export default function ServiceOrders() {
       const breakLimitMinutes = Math.max(0, Number(breakMinutesAllowed || 0));
       const breakExceededLimit = breakTotalMs > breakLimitMinutes * 60 * 1000;
 
+      if (executedService) {
+        await updateServiceOrder(finishingOrderId, {
+          final_report: executedService,
+          service_executed: executedService,
+          observations: resolutionText || null,
+        });
+      }
+
       const result = await closeServiceOrder(
         finishingOrderId,
         new Date().toISOString(),
-        finalReport || undefined
+        executedService || undefined
       );
       if (result) {
         await recordAuditAction({
@@ -778,8 +796,9 @@ export default function ServiceOrders() {
             status_from: 'open',
             status_to: 'closed',
             reason: resolutionText || null,
-            closed_without_resolution_note: !resolutionText,
-            has_final_report: Boolean(finalReport?.trim()),
+            closed_without_resolution_note: !executedService,
+            has_final_report: Boolean(executedService),
+            has_observations: Boolean(resolutionText),
             break_total_ms: breakTotalMs,
             break_limit_minutes: breakLimitMinutes,
             break_exceeded_limit: breakExceededLimit,
@@ -1087,7 +1106,7 @@ export default function ServiceOrders() {
       return 'Informe o componente com pelo menos 2 caracteres';
     }
     if (!newOrder.description || newOrder.description.trim().length < 8) {
-      return 'A descrição precisa ter no mínimo 8 caracteres';
+      return 'Informe o problema/causa com no mínimo 8 caracteres';
     }
     return null;
   };
@@ -1146,6 +1165,9 @@ export default function ServiceOrders() {
       order.machine_name.toLowerCase().includes(q) ||
       order.technician_name.toLowerCase().includes(q) ||
       order.description.toLowerCase().includes(q) ||
+      String(order.problem_cause || '').toLowerCase().includes(q) ||
+      String(order.service_executed || '').toLowerCase().includes(q) ||
+      String(order.observations || '').toLowerCase().includes(q) ||
       order.component.toLowerCase().includes(q) ||
       assignedName.includes(q) ||
       String(order.id).includes(q)
@@ -1195,6 +1217,9 @@ export default function ServiceOrders() {
       'tipo_manutencao',
       'responsavel',
       'componente',
+      'problema_causa',
+      'servico_executado',
+      'observacoes',
       'inicio',
       'fim'
     ];
@@ -1207,6 +1232,9 @@ export default function ServiceOrders() {
       order.maintenance_type,
       order.technician_name,
       order.component,
+      order.problem_cause || order.description || '',
+      order.service_executed || order.final_report || '',
+      order.observations || '',
       order.start_time,
       order.end_time || '',
     ]);
@@ -1373,7 +1401,22 @@ export default function ServiceOrders() {
               <h3 className="text-lg font-bold text-slate-900">{order.machine_name}</h3>
               <p className="text-slate-600 mt-1"><span className="font-medium">Componente:</span> {order.component}</p>
               <p className="text-slate-600 mt-1"><span className="font-medium">Responsável:</span> {getEffectiveAssignedUserName(order) || 'N/A (disponível para todos)'}</p>
-              <p className="text-slate-500 text-sm mt-2 bg-slate-50 p-2 rounded-lg">{order.description}</p>
+              <div className="text-slate-500 text-sm mt-2 bg-slate-50 p-3 rounded-lg">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">Problema / Causa</p>
+                <p>{order.problem_cause || order.description}</p>
+              </div>
+              {(order.service_executed || order.final_report) && (
+                <div className="text-emerald-900 text-sm mt-2 bg-emerald-50 border border-emerald-200 p-3 rounded-lg">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-700 mb-1">Serviço Executado</p>
+                  <p>{order.service_executed || order.final_report}</p>
+                </div>
+              )}
+              {order.observations && (
+                <div className="text-amber-900 text-sm mt-2 bg-amber-50 border border-amber-200 p-3 rounded-lg">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-amber-700 mb-1">Observações</p>
+                  <p>{order.observations}</p>
+                </div>
+              )}
               {order.used_parts_tools && order.used_parts_tools.length > 0 && (
                 <div className="mt-3">
                   <p className="text-xs font-medium text-slate-500 mb-1">Itens utilizados:</p>
@@ -1484,7 +1527,8 @@ export default function ServiceOrders() {
                       <button
                         onClick={() => {
                           setEditingOrder(order);
-                          setEditReport(order.final_report || '');
+                          setEditReport(order.service_executed || order.final_report || '');
+                          setEditObservations(order.observations || '');
                           setEditTools(order.tools || []);
                           setEditComponent(order.component || '');
                           setEditReason('');
@@ -1737,10 +1781,10 @@ export default function ServiceOrders() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Descrição do Problema</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Problema / Causa</label>
                   <textarea
                     required
-                    placeholder="Descreva o problema detalhadamente..."
+                    placeholder="Descreva o problema e a causa identificada..."
                     value={newOrder.description}
                     onChange={(e) => setNewOrder({ ...newOrder, description: e.target.value })}
                     className="w-full p-3 rounded-lg border border-slate-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none"
@@ -1900,20 +1944,20 @@ export default function ServiceOrders() {
               className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-4 sm:p-6 max-h-[calc(100dvh-2rem)] overflow-y-auto"
             >
               <h3 className="text-xl font-bold text-slate-900 mb-6">Finalizar Ordem de Serviço</h3>
-              <p className="text-slate-500 mb-4">Descreva o que foi realizado (opcional).</p>
+              <p className="text-slate-500 mb-4">Registre o serviço executado e as observações finais.</p>
               <textarea
                 value={finalReport}
                 onChange={(e) => setFinalReport(e.target.value)}
                 className="w-full p-3 rounded-lg border border-slate-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none"
                 rows={5}
-                placeholder="Ex: Substituído motor, realizado teste, tudo ok..."
+                placeholder="Ex: Substituído motor, reaperto de conexões e teste operacional aprovado..."
               />
-              <label className="block text-sm font-medium text-slate-700 mt-4 mb-1">Status/motivo da resolução (opcional)</label>
+              <label className="block text-sm font-medium text-slate-700 mt-4 mb-1">Observações finais (opcional)</label>
               <input
                 value={finishReason}
                 onChange={(e) => setFinishReason(e.target.value)}
                 className="w-full p-3 rounded-lg border border-slate-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none"
-                placeholder="Ex: Problema resolvido, aguardando teste final"
+                placeholder="Ex: Reavaliar em 48h, peça antiga enviada para análise"
               />
               <div className="flex flex-col sm:flex-row gap-3 mt-6">
                 <button
@@ -1948,9 +1992,9 @@ export default function ServiceOrders() {
               exit={{ opacity: 0, scale: 0.95, y: 8 }}
               className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 p-5"
             >
-              <h3 className="text-lg font-bold text-slate-900">Finalizar sem status de resolucao?</h3>
+              <h3 className="text-lg font-bold text-slate-900">Finalizar sem serviço executado?</h3>
               <p className="text-sm text-slate-600 mt-2">
-                Esta O.S sera finalizada sem informar se o problema foi resolvido. Deseja continuar mesmo assim?
+                Esta O.S sera finalizada sem registrar o serviço executado. Deseja continuar mesmo assim?
               </p>
 
               <div className="flex flex-col sm:flex-row gap-3 mt-5">
@@ -1984,7 +2028,7 @@ export default function ServiceOrders() {
               exit={{ opacity: 0, scale: 0.95 }}
               className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-4 sm:p-6 max-h-[calc(100dvh-2rem)] overflow-y-auto"
             >
-              <h3 className="text-xl font-bold text-slate-900 mb-6">Editar Relatório Final</h3>
+              <h3 className="text-xl font-bold text-slate-900 mb-6">Editar Encerramento da O.S</h3>
               <p className="text-slate-500 mb-4">Atualize as informações da OS #{editingOrder.id.toString().padStart(4, '0')}</p>
               <label className="block text-sm font-medium text-slate-700 mb-1">Componente *</label>
               <input
@@ -2015,8 +2059,10 @@ export default function ServiceOrders() {
                 className="w-full p-3 rounded-lg border border-slate-200 mb-3"
                 placeholder="Ex: Correção de dados técnicos do relatório"
               />
-              <label className="block text-sm font-medium text-slate-700 mb-1">Relatório Final (opcional)</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Serviço Executado</label>
               <textarea value={editReport} onChange={e => setEditReport(e.target.value)} rows={5} className="w-full p-3 rounded-lg border border-slate-200 mb-4" />
+              <label className="block text-sm font-medium text-slate-700 mb-1">Observações</label>
+              <textarea value={editObservations} onChange={e => setEditObservations(e.target.value)} rows={3} className="w-full p-3 rounded-lg border border-slate-200 mb-4" />
               <div className="flex flex-col sm:flex-row gap-3">
                 <button onClick={() => setEditReportModalOpen(false)} className="flex-1 bg-slate-100 hover:bg-slate-200 py-3 rounded-lg">Cancelar</button>
                 <button onClick={async () => {
@@ -2037,6 +2083,8 @@ export default function ServiceOrders() {
                   try {
                     const result = await updateServiceOrder(editingOrder.id, {
                       final_report: editReport,
+                      service_executed: editReport,
+                      observations: editObservations,
                       tools: editTools,
                       component: editComponent
                     });
@@ -2051,7 +2099,7 @@ export default function ServiceOrders() {
                           role: user.role,
                         },
                         details: {
-                          fields: ['final_report', 'tools', 'component'],
+                          fields: ['final_report', 'service_executed', 'observations', 'tools', 'component'],
                           previous_component: editingOrder.component,
                           next_component: editComponent,
                           previous_tools_count: (editingOrder.tools || []).length,

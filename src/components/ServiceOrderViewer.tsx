@@ -16,6 +16,9 @@ interface ServiceOrder {
   maintenance_type: 'preventiva' | 'corretiva';
   technician_name: string;
   description: string;
+  problem_cause?: string | null;
+  service_executed?: string | null;
+  observations?: string | null;
   component: string;
   start_time: string;
   end_time: string | null;
@@ -586,7 +589,7 @@ export default function ServiceOrderViewer({
                     <div className="mb-8 rounded-2xl border border-slate-200 p-5 sm:p-6 bg-slate-50">
                       <h2 className="text-sm font-bold text-slate-900 uppercase tracking-[0.2em] mb-3 pb-2 border-b border-slate-300">Problema / Solicitação</h2>
                       <div className="bg-white border border-slate-200 border-l-[5px] border-l-emerald-700 p-5 rounded-xl min-h-[132px] text-sm text-slate-800 leading-7">
-                        {order.description || '-'}
+                        {order.problem_cause || order.description || '-'}
                       </div>
                     </div>
 
@@ -619,20 +622,24 @@ export default function ServiceOrderViewer({
                     )}
 
                     <div className="mb-8 rounded-2xl border border-slate-200 p-5 sm:p-6 bg-slate-50">
-                      <h2 className="text-sm font-bold text-slate-900 uppercase tracking-[0.2em] mb-3 pb-2 border-b border-slate-300">Observações técnicas</h2>
-                      <div className="bg-white border border-slate-200 rounded-xl px-5 py-4 min-h-[148px]">
-                        {order.final_report ? (
-                          <p className="text-sm text-slate-800 leading-7 whitespace-pre-wrap">{order.final_report}</p>
-                        ) : (
-                          <div className="space-y-4 pt-1">
+                      <h2 className="text-sm font-bold text-slate-900 uppercase tracking-[0.2em] mb-3 pb-2 border-b border-slate-300">Fechamento técnico</h2>
+                      <div className="bg-white border border-slate-200 rounded-xl px-5 py-4 min-h-[148px] space-y-5">
+                        <div>
+                          <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-[0.14em] mb-2">Serviço executado</p>
+                          {order.service_executed || order.final_report ? (
+                            <p className="text-sm text-slate-800 leading-7 whitespace-pre-wrap">{order.service_executed || order.final_report}</p>
+                          ) : (
+                            <p className="text-sm text-slate-400 italic">Nenhum serviço executado registrado.</p>
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-[0.14em] mb-2">Observações</p>
+                          {order.observations ? (
+                            <p className="text-sm text-slate-800 leading-7 whitespace-pre-wrap">{order.observations}</p>
+                          ) : (
                             <p className="text-sm text-slate-400 italic">Nenhuma observação registrada.</p>
-                            <div className="space-y-4">
-                              <div className="border-b border-dashed border-slate-300" />
-                              <div className="border-b border-dashed border-slate-300" />
-                              <div className="border-b border-dashed border-slate-300" />
-                            </div>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </div>
                     </div>
 

@@ -53,6 +53,10 @@ INSERT INTO storage.buckets (id, name, public)
 VALUES ('machines', 'machines', true)
 ON CONFLICT (id) DO NOTHING;
 
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('manuals', 'manuals', true)
+ON CONFLICT (id) DO NOTHING;
+
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -65,6 +69,21 @@ BEGIN
       ON storage.objects
       FOR SELECT
       USING (bucket_id = 'machines');
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'storage'
+      AND tablename = 'objects'
+      AND policyname = 'Allow public read manuals bucket'
+  ) THEN
+    CREATE POLICY "Allow public read manuals bucket"
+      ON storage.objects
+      FOR SELECT
+      USING (bucket_id = 'manuals');
   END IF;
 END $$;
 
@@ -155,6 +174,21 @@ BEGIN
     SELECT 1 FROM pg_policies
     WHERE schemaname = 'storage'
       AND tablename = 'objects'
+      AND policyname = 'Allow public upload manuals bucket'
+  ) THEN
+    CREATE POLICY "Allow public upload manuals bucket"
+      ON storage.objects
+      FOR INSERT
+      WITH CHECK (bucket_id = 'manuals');
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'storage'
+      AND tablename = 'objects'
       AND policyname = 'Allow public update machines bucket'
   ) THEN
     CREATE POLICY "Allow public update machines bucket"
@@ -171,11 +205,42 @@ BEGIN
     SELECT 1 FROM pg_policies
     WHERE schemaname = 'storage'
       AND tablename = 'objects'
+      AND policyname = 'Allow public update manuals bucket'
+  ) THEN
+    CREATE POLICY "Allow public update manuals bucket"
+      ON storage.objects
+      FOR UPDATE
+      USING (bucket_id = 'manuals')
+      WITH CHECK (bucket_id = 'manuals');
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'storage'
+      AND tablename = 'objects'
       AND policyname = 'Allow public delete machines bucket'
   ) THEN
     CREATE POLICY "Allow public delete machines bucket"
       ON storage.objects
       FOR DELETE
       USING (bucket_id = 'machines');
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'storage'
+      AND tablename = 'objects'
+      AND policyname = 'Allow public delete manuals bucket'
+  ) THEN
+    CREATE POLICY "Allow public delete manuals bucket"
+      ON storage.objects
+      FOR DELETE
+      USING (bucket_id = 'manuals');
   END IF;
 END $$;

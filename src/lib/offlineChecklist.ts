@@ -9,6 +9,12 @@ interface OfflineChecklistRecord {
   date: string;
   status: string;
   data: string;
+  checklist_started_at?: string | null;
+  checklist_finished_at?: string | null;
+  schedule_id?: number | string | null;
+  schedule_confirmed_at?: string | null;
+  schedule_confirmed_by?: number | null;
+  schedule_confirmed_by_name?: string | null;
   sync_status: 'pending' | 'syncing' | 'synced' | 'error';
   remote_id?: number;
   last_error?: string;
@@ -36,6 +42,12 @@ interface ChecklistPayload {
   date: string;
   data: unknown;
   status: string;
+  checklist_started_at?: string | null;
+  checklist_finished_at?: string | null;
+  schedule_id?: number | string | null;
+  schedule_confirmed_at?: string | null;
+  schedule_confirmed_by?: number | null;
+  schedule_confirmed_by_name?: string | null;
 }
 
 class ChecklistOfflineDatabase extends Dexie {
@@ -87,6 +99,12 @@ export async function queueChecklistForSync(payload: ChecklistPayload) {
       date: payload.date,
       status: payload.status,
       data: dataAsString,
+      checklist_started_at: payload.checklist_started_at || null,
+      checklist_finished_at: payload.checklist_finished_at || null,
+      schedule_id: payload.schedule_id ?? null,
+      schedule_confirmed_at: payload.schedule_confirmed_at || null,
+      schedule_confirmed_by: payload.schedule_confirmed_by ?? null,
+      schedule_confirmed_by_name: payload.schedule_confirmed_by_name || null,
       sync_status: 'pending',
       created_at: timestamp,
       updated_at: timestamp
@@ -130,6 +148,12 @@ export async function getUnsyncedChecklists() {
       date: row.date,
       status: row.status,
       data: parseStoredData(row.data),
+      checklist_started_at: row.checklist_started_at || null,
+      checklist_finished_at: row.checklist_finished_at || null,
+      schedule_id: row.schedule_id ?? null,
+      schedule_confirmed_at: row.schedule_confirmed_at || null,
+      schedule_confirmed_by: row.schedule_confirmed_by ?? null,
+      schedule_confirmed_by_name: row.schedule_confirmed_by_name || null,
       created_at: new Date(row.created_at).toISOString(),
       updated_at: new Date(row.updated_at).toISOString(),
       __sync: row.sync_status,
@@ -174,7 +198,13 @@ async function trySyncChecklist(localRef: string, payload: ChecklistPayload) {
         operator_id: payload.operator_id,
         date: payload.date,
         status: payload.status,
-        data: JSON.stringify(payload.data || {})
+        data: JSON.stringify(payload.data || {}),
+        checklist_started_at: payload.checklist_started_at || null,
+        checklist_finished_at: payload.checklist_finished_at || null,
+        schedule_id: payload.schedule_id ?? null,
+        schedule_confirmed_at: payload.schedule_confirmed_at || null,
+        schedule_confirmed_by: payload.schedule_confirmed_by ?? null,
+        schedule_confirmed_by_name: payload.schedule_confirmed_by_name || null,
       }
     ])
     .select('id')

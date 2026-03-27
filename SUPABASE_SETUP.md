@@ -47,6 +47,27 @@ VITE_SUPABASE_ANON_KEY=sua-chave-anonima-aqui
 4. Clique em **"Run"** (botão verde)
 5. Aguarde a execução (deve aparecer "Success")
 
+### Scripts complementares obrigatórios para a versão atual
+
+Depois do `schema.sql`, execute nesta ordem:
+
+1. `ADD_AUDIT_LOGS_TABLE.sql`
+2. `ADD_USER_NOTIFICATIONS_TABLE.sql`
+3. `ADD_SERVICE_ORDER_ASSIGNMENT_COLUMNS.sql`
+4. `ADD_CHECKLIST_SCHEDULES_TABLE.sql`
+5. `ADD_MAINTENANCE_LIFECYCLE_COLUMNS.sql`
+6. `MIGRATE_TO_SUPABASE_AUTH.sql`
+7. `ADD_FINE_GRAINED_PERMISSIONS.sql`
+8. `FIX_SUPABASE_404_400.sql`
+
+Esses scripts completam:
+- rastreio do ciclo preventivo do checklist;
+- aprovacao PCM do planejamento;
+- campos tecnicos completos da O.S.;
+- autenticacao via Supabase Auth com RLS por usuario;
+- buckets de imagens e manuais;
+- auditoria, notificacoes e permissoes granulares.
+
 **O que foi criado:**
 - ✅ Tabela `users` (usuários)
 - ✅ Tabela `machines` (máquinas/equipamentos)
@@ -54,17 +75,21 @@ VITE_SUPABASE_ANON_KEY=sua-chave-anonima-aqui
 - ✅ Tabela `service_orders` (ordens de serviço)
 - ✅ Tabela `checklists` (checklists)
 - ✅ Tabela `checklist_templates` (templates de checklist)
+- ✅ Tabela `checklist_schedules` (planejamento preventivo)
 - ✅ Dados iniciais (usuários, máquinas, etc...)
 
 ---
 
-## 🔒 PASSO 5: Configurar RLS (Row Level Security) - OPCIONAL
+## 🔒 PASSO 5: Entender o modelo atual de segurança
 
-Se quiser proteger os dados com permissões por usuário (recomendado para produção):
+O projeto agora pode operar com Supabase Auth + perfil em `public.users`, desde que o script `MIGRATE_TO_SUPABASE_AUTH.sql` tenha sido executado. Nesse desenho:
 
-1. No Supabase, vá em **"Authentication"**
-2. Configure políticas de RLS nas tabelas
-3. NOTA: Por enquanto está configurado para permitir leitura pública (desenvolvimento)
+- o navegador autentica no Supabase Auth;
+- o perfil da aplicacao continua em `public.users`;
+- as policies usam `auth.uid()` para restringir acesso por usuario;
+- a gestao de contas precisa da API server-side com `SUPABASE_SERVICE_ROLE_KEY`.
+
+Se a Vercel nao tiver `SUPABASE_SERVICE_ROLE_KEY`, o login continua funcionando, mas criacao/edicao/exclusao de usuarios administrativos pela interface nao funcionara.
 
 ---
 
@@ -191,18 +216,23 @@ service_orders
 ├── id
 ├── machine_id (FK)
 ├── operator_id (FK)
+├── assigned_user_id (FK)
 ├── machine_name
 ├── operator_name
+├── assigned_user_name
 ├── maintenance_type (preventiva | corretiva)
 ├── technician_name
 ├── component
 ├── description
+├── problem_cause
 ├── tools (JSON)
 ├── used_parts_tools (JSON)
 ├── start_time
 ├── end_time
 ├── status (open | closed)
 ├── final_report
+├── service_executed
+├── observations
 └── created_at
 
 machines
@@ -228,6 +258,24 @@ checklists
 ├── date
 ├── status (pending | completed)
 ├── data (JSON)
+├── checklist_started_at
+├── checklist_finished_at
+├── schedule_id (FK)
+├── schedule_confirmed_at
+├── schedule_confirmed_by (FK)
+├── schedule_confirmed_by_name
+
+checklist_schedules
+├── id
+├── machine_id (FK)
+├── operator_id (FK)
+├── scheduled_date
+├── status (draft | confirmed | completed | cancelled)
+├── confirmed_at
+├── confirmed_by_id (FK)
+├── confirmed_by_name
+├── completed_at
+├── completed_checklist_id (FK)
 └── created_at
 
 checklist_templates

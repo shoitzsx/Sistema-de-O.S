@@ -42,7 +42,18 @@ npm install
 1. Vá para https://supabase.com/dashboard
 2. Crie novo projeto
 3. Vá para SQL Editor
-4. Copie e execute `schema.sql`
+4. Execute `schema.sql`
+5. Execute também, em sequência: `ADD_AUDIT_LOGS_TABLE.sql`, `ADD_USER_NOTIFICATIONS_TABLE.sql`, `ADD_SERVICE_ORDER_ASSIGNMENT_COLUMNS.sql`, `ADD_CHECKLIST_SCHEDULES_TABLE.sql`, `ADD_MAINTENANCE_LIFECYCLE_COLUMNS.sql`, `MIGRATE_TO_SUPABASE_AUTH.sql`, `ADD_FINE_GRAINED_PERMISSIONS.sql` e `FIX_SUPABASE_404_400.sql`
+
+### 2.1 Variáveis server-side para gestão de usuários
+
+No ambiente da Vercel, configure também:
+
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+
+Essas variáveis habilitam a API server-side de gestão de usuários em `/api/admin/users`.
 
 ### 3. Configurar .env.local
 ```

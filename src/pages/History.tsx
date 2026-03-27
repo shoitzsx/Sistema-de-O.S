@@ -31,6 +31,9 @@ interface ServiceOrder {
   maintenance_type: 'preventiva' | 'corretiva';
   technician_name: string;
   description: string;
+  problem_cause?: string | null;
+  service_executed?: string | null;
+  observations?: string | null;
   tools: string[];
   used_parts_tools?: number[];
   component: string;
@@ -419,7 +422,7 @@ export default function History() {
   };
 
   const exportToCSV = () => {
-    const headers = ['ID', 'Máquina', 'Operador', 'Responsável', 'Tipo', 'Componente', 'Início', 'Início ISO', 'Fim', 'Fim ISO', 'Duração', 'Tempo em Fila', 'Fila Início ISO', 'Fila Início Trabalho ISO', 'Pausa Total', 'Limite de Pausa (min)', 'Ultrapassou Limite', 'Status', 'Relatório'];
+    const headers = ['ID', 'Máquina', 'Operador', 'Responsável', 'Tipo', 'Componente', 'Problema/Causa', 'Serviço Executado', 'Observações', 'Início', 'Início ISO', 'Fim', 'Fim ISO', 'Duração', 'Tempo em Fila', 'Fila Início ISO', 'Fila Início Trabalho ISO', 'Pausa Total', 'Limite de Pausa (min)', 'Ultrapassou Limite', 'Status', 'Relatório'];
     const csvContent = [
       headers.map(escapeCsvField).join(';'),
       ...filteredOrders.map(order => {
@@ -432,6 +435,9 @@ export default function History() {
         order.technician_name,
         order.maintenance_type === 'preventiva' ? 'Preventiva' : 'Corretiva',
         order.component,
+        order.problem_cause || order.description || '-',
+        order.service_executed || order.final_report || '-',
+        order.observations || '-',
         formatDate(order.start_time),
         order.start_time,
         order.end_time ? formatDate(order.end_time) : '-',
@@ -937,16 +943,30 @@ export default function History() {
                   )}
                 </div>
 
-                <p className="text-slate-600 text-sm bg-slate-50 p-3 rounded-lg mb-4">{order.description}</p>
+                <div className="text-slate-600 text-sm bg-slate-50 p-3 rounded-lg mb-4">
+                  <p className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">Problema / Causa</p>
+                  <p>{order.problem_cause || order.description}</p>
+                </div>
 
-                {/* Relatório Final */}
-                {order.final_report && (
+                {(order.service_executed || order.final_report) && (
                   <div className="mb-4 p-3 bg-emerald-50 rounded-lg border border-emerald-200">
                     <div className="flex items-start gap-2 mb-2">
                       <FileText size={16} className="text-emerald-700 mt-0.5" />
                       <div className="flex-1">
-                        <p className="text-xs font-bold text-emerald-700 uppercase">Relatório Final</p>
-                        <p className="text-sm text-emerald-900 mt-1">{order.final_report}</p>
+                        <p className="text-xs font-bold text-emerald-700 uppercase">Serviço Executado</p>
+                        <p className="text-sm text-emerald-900 mt-1">{order.service_executed || order.final_report}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {order.observations && (
+                  <div className="mb-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
+                    <div className="flex items-start gap-2 mb-2">
+                      <AlertTriangle size={16} className="text-amber-700 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="text-xs font-bold text-amber-700 uppercase">Observações</p>
+                        <p className="text-sm text-amber-900 mt-1">{order.observations}</p>
                       </div>
                     </div>
                   </div>

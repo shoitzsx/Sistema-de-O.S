@@ -16,6 +16,7 @@ import {
   getChecklistSchedules,
   createChecklistSchedule,
   completeChecklistSchedulesForMachine,
+  updateChecklistScheduleStatus,
 } from '../lib/supabaseApi';
 import { getOfflineChecklistSyncSummary } from '../lib/offlineChecklist';
 import { supabase } from '../lib/supabase';
@@ -30,7 +31,12 @@ interface ChecklistSchedule {
   operator_name: string;
   scheduled_date: string;
   notes?: string;
-  status: 'pending' | 'completed' | 'cancelled';
+  status: 'draft' | 'confirmed' | 'completed' | 'cancelled';
+  confirmed_at?: string | null;
+  confirmed_by?: number | null;
+  confirmed_by_name?: string | null;
+  completed_at?: string | null;
+  completed_checklist_id?: number | string | null;
   created_by_name: string;
 }
 
@@ -97,6 +103,7 @@ export default function Checklist() {
   const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
   const [template, setTemplate] = useState<TemplateCategory[]>([]);
   const [checklistData, setChecklistData] = useState<ChecklistData>({});
+  const [checklistStartedAt, setChecklistStartedAt] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [openCategory, setOpenCategory] = useState<string | null>(null);
 
@@ -313,14 +320,14 @@ export default function Checklist() {
     const dueToday = schedules.filter(
       (item) =>
         item.operator_id === user.id &&
-        item.status === 'pending' &&
+        item.status === 'confirmed' &&
         item.scheduled_date === todayIso
     );
 
     const upcomingCount = schedules.filter(
       (item) =>
         item.operator_id === user.id &&
-        item.status === 'pending' &&
+        item.status === 'confirmed' &&
         item.scheduled_date >= todayIso
     ).length;
 
@@ -384,7 +391,7 @@ export default function Checklist() {
         return;
       }
 
-      toast.success('Agendamento criado com sucesso.');
+      toast.success('Agendamento criado como rascunho. Confirme pelo PCM para liberar a execução.');
       setScheduleForm({ operator_id: '', machine_id: '', scheduled_date: '', notes: '' });
       await loadSchedules();
     } catch (err) {
@@ -421,10 +428,59 @@ export default function Checklist() {
     }
   };
 
+  const handleConfirmSchedule = async (scheduleId: number | string) => {
+    if (!user || !isAdmin) return;
+
+    try {
+      const result = await updateChecklistScheduleStatus({
+        scheduleId,
+        status: 'confirmed',
+        actingUserId: user.id,
+        actingUserName: user.name,
+      });
+
+      if (!result) {
+        toast.error('Não foi possível confirmar o agendamento.');
+        return;
+      }
+
+      toast.success('Agendamento confirmado pelo PCM.');
+      await loadSchedules();
+    } catch (err) {
+      console.error('Erro ao confirmar agendamento:', err);
+      toast.error('Erro ao confirmar agendamento.');
+    }
+  };
+
+  const handleCancelSchedule = async (scheduleId: number | string) => {
+    if (!user || !isAdmin) return;
+
+    try {
+      const result = await updateChecklistScheduleStatus({
+        scheduleId,
+        status: 'cancelled',
+        actingUserId: user.id,
+        actingUserName: user.name,
+      });
+
+      if (!result) {
+        toast.error('Não foi possível cancelar o agendamento.');
+        return;
+      }
+
+      toast.success('Agendamento cancelado.');
+      await loadSchedules();
+    } catch (err) {
+      console.error('Erro ao cancelar agendamento:', err);
+      toast.error('Erro ao cancelar agendamento.');
+    }
+  };
+
   const visibleSchedules = schedules
     .filter((item) => {
       if (selectedCalendarDay && item.scheduled_date !== selectedCalendarDay) return false;
       if (!isAdmin && user && item.operator_id !== user.id) return false;
+      if (!isAdmin && item.status === 'draft') return false;
       return true;
     })
     .sort((a, b) => new Date(a.scheduled_date).getTime() - new Date(b.scheduled_date).getTime());
@@ -435,6 +491,9 @@ export default function Checklist() {
   const daysInMonth = monthEnd.getDate();
 
   const scheduleCountByDay = schedules.reduce<Record<string, number>>((acc, item) => {
+    if (!isAdmin && item.status === 'draft') {
+      return acc;
+    }
     acc[item.scheduled_date] = (acc[item.scheduled_date] || 0) + 1;
     return acc;
   }, {});
@@ -447,6 +506,7 @@ export default function Checklist() {
   const upcomingThirtyDaysSchedules = schedules
     .filter((item) => {
       if (!isAdmin && user && item.operator_id !== user.id) return false;
+      if (!isAdmin && item.status === 'draft') return false;
       if (item.status === 'cancelled') return false;
 
       const timestamp = new Date(`${item.scheduled_date}T00:00:00`).getTime();
@@ -461,10 +521,21 @@ export default function Checklist() {
         .filter((item) => {
           if (item.scheduled_date !== selectedCalendarDay) return false;
           if (!isAdmin && user && item.operator_id !== user.id) return false;
+          if (!isAdmin && item.status === 'draft') return false;
           return true;
         })
         .sort((a, b) => new Date(a.scheduled_date).getTime() - new Date(b.scheduled_date).getTime())
     : [];
+
+  const activeScheduleForSelectedMachine = selectedMachine && user
+    ? schedules
+        .filter((item) => {
+          if (item.machine_id !== selectedMachine.id) return false;
+          if (!isAdmin && item.operator_id !== user.id) return false;
+          return item.status === 'confirmed';
+        })
+        .sort((a, b) => new Date(b.scheduled_date).getTime() - new Date(a.scheduled_date).getTime())[0] || null
+    : null;
 
   const tvVisibleOrders = user
     ? isAdmin
@@ -557,18 +628,24 @@ export default function Checklist() {
   }, [isTvMode, tvOpenOrders, tvPendingChecklists, tvLiveNotice]);
 
   const getStatusLabel = (status: ChecklistSchedule['status']) => {
+    if (status === 'draft') return 'Rascunho';
+    if (status === 'confirmed') return 'Confirmado';
     if (status === 'completed') return 'Concluido';
     if (status === 'cancelled') return 'Cancelado';
-    return 'Pendente';
+    return 'Rascunho';
   };
 
   const getStatusClass = (status: ChecklistSchedule['status']) => {
+    if (status === 'draft') return 'bg-amber-100 text-amber-700';
+    if (status === 'confirmed') return 'bg-blue-100 text-blue-700';
     if (status === 'completed') return 'bg-emerald-100 text-emerald-700';
     if (status === 'cancelled') return 'bg-red-100 text-red-700';
-    return 'bg-blue-100 text-blue-700';
+    return 'bg-amber-100 text-amber-700';
   };
 
   const getTvStatusClass = (status: ChecklistSchedule['status']) => {
+    if (status === 'draft') return 'bg-amber-100 text-amber-700';
+    if (status === 'confirmed') return 'bg-lime-100 text-lime-700';
     if (status === 'completed') return 'bg-emerald-100 text-emerald-700';
     if (status === 'cancelled') return 'bg-red-100 text-red-700';
     return 'bg-lime-100 text-lime-700';
@@ -583,8 +660,10 @@ export default function Checklist() {
   useEffect(() => {
     if (selectedMachine) {
       loadTemplate(selectedMachine.model);
+      setChecklistStartedAt(new Date().toISOString());
     } else {
       setTemplate([]);
+      setChecklistStartedAt(null);
     }
   }, [selectedMachine]);
 
@@ -782,7 +861,13 @@ export default function Checklist() {
         operator_id: user.id,
         date: new Date().toISOString(),
         data: checklistData,
-        status: 'completed'
+        status: 'completed',
+        checklist_started_at: checklistStartedAt,
+        checklist_finished_at: new Date().toISOString(),
+        schedule_id: activeScheduleForSelectedMachine?.id ?? null,
+        schedule_confirmed_at: activeScheduleForSelectedMachine?.confirmed_at ?? null,
+        schedule_confirmed_by: activeScheduleForSelectedMachine?.confirmed_by ?? null,
+        schedule_confirmed_by_name: activeScheduleForSelectedMachine?.confirmed_by_name ?? null,
       });
 
       if (result?.__sync === 'pending') {
@@ -793,10 +878,11 @@ export default function Checklist() {
 
       const summary = await getOfflineChecklistSyncSummary();
       setSyncSummary(summary);
-      await completeChecklistSchedulesForMachine(user.id, selectedMachine.id);
+      await completeChecklistSchedulesForMachine(user.id, selectedMachine.id, result?.id ?? null);
       await loadSchedules();
       setSelectedMachine(null);
       setChecklistData({});
+      setChecklistStartedAt(null);
     } catch (err) {
       console.error('Erro:', err);
       toast.error('Erro ao salvar checklist. Verifique sua conexão.');
@@ -1269,8 +1355,36 @@ export default function Checklist() {
                       {item.notes && (
                         <div className="text-xs text-slate-600 mt-1">Obs: {item.notes}</div>
                       )}
+                      {item.confirmed_at && (
+                        <div className="text-[11px] text-slate-500 mt-1">
+                          Confirmado em {new Date(item.confirmed_at).toLocaleString('pt-BR')}
+                          {item.confirmed_by_name ? ` por ${item.confirmed_by_name}` : ''}
+                        </div>
+                      )}
                       {isAdmin && (
-                        <div className="text-[11px] text-slate-500 mt-1">Agendado por {item.created_by_name}</div>
+                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                          <div className="text-[11px] text-slate-500">Agendado por {item.created_by_name}</div>
+                          <div className="flex flex-wrap gap-2">
+                            {item.status === 'draft' && (
+                              <button
+                                type="button"
+                                onClick={() => void handleConfirmSchedule(item.id)}
+                                className="rounded-md bg-blue-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-blue-700"
+                              >
+                                Confirmar PCM
+                              </button>
+                            )}
+                            {item.status !== 'completed' && item.status !== 'cancelled' && (
+                              <button
+                                type="button"
+                                onClick={() => void handleCancelSchedule(item.id)}
+                                className="rounded-md bg-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-300"
+                              >
+                                Cancelar
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       )}
                     </div>
                   ))}
@@ -1308,6 +1422,22 @@ export default function Checklist() {
                   &larr; Trocar Equipamento
                 </button>
                 <h2 className="text-xl font-bold text-slate-900">{selectedMachine.name}</h2>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                  {checklistStartedAt && (
+                    <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700">
+                      Iniciado em {new Date(checklistStartedAt).toLocaleString('pt-BR')}
+                    </span>
+                  )}
+                  {activeScheduleForSelectedMachine ? (
+                    <span className="rounded-full bg-blue-50 px-2.5 py-1 font-semibold text-blue-700">
+                      Agenda confirmada para {new Date(`${activeScheduleForSelectedMachine.scheduled_date}T00:00:00`).toLocaleDateString('pt-BR')}
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-amber-50 px-2.5 py-1 font-semibold text-amber-700">
+                      Sem agenda confirmada vinculada
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="text-right">
                 <div className="text-sm font-medium text-slate-500">Progresso</div>

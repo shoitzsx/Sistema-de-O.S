@@ -85,6 +85,11 @@ export default function UserManagement() {
             return;
           }
 
+          if (passwordChange.newPassword.trim().length < 6) {
+            toast.error('A nova senha precisa ter no mínimo 6 caracteres.');
+            return;
+          }
+
           const usernameToValidate = editingUsername || newUser.username;
           const passwordOk = await verifyUserCredentials(usernameToValidate, passwordChange.currentPassword);
 
@@ -123,8 +128,8 @@ export default function UserManagement() {
       console.error(err);
       const apiError = err as { status?: number; code?: string; message?: string };
 
-      if (apiError?.status === 401 || apiError?.code === '42501') {
-        toast.error('Sem permissão para salvar usuário (RLS no Supabase). Execute a policy de INSERT/UPDATE na tabela users.');
+      if (apiError?.status === 401 || apiError?.status === 403 || apiError?.code === '42501') {
+        toast.error('Sem permissão para salvar usuário. Faça login novamente como administrador.');
       } else if (apiError?.status === 409 || apiError?.code === '23505') {
         toast.error('Já existe um usuário com este login. Use outro nome de usuário.');
       } else if (apiError?.message) {
@@ -427,7 +432,7 @@ export default function UserManagement() {
                       </div>
 
                       <p className="text-xs text-slate-500">
-                        Para trocar a senha, informe a senha atual e a nova senha antes de salvar.
+                        Para trocar a senha, informe a senha atual e uma nova senha com no mínimo 6 caracteres antes de salvar.
                       </p>
                     </div>
                   )}

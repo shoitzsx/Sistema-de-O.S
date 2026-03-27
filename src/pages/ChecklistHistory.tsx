@@ -24,6 +24,10 @@ interface InspectionHistoryItem {
   operator_id: number;
   date: Date;
   dateFormatted: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  scheduleConfirmedAt: string | null;
+  scheduleConfirmedByName: string | null;
   data: Record<string, ChecklistItem>;
   syncStatus?: 'pending' | 'syncing' | 'synced' | 'error';
 }
@@ -102,6 +106,10 @@ export default function ChecklistHistory() {
           operator_id: insp.operator_id,
           date: inspectionDate,
           dateFormatted: inspectionDate.toLocaleString('pt-BR'),
+          startedAt: insp.checklist_started_at ? String(insp.checklist_started_at) : null,
+          finishedAt: insp.checklist_finished_at ? String(insp.checklist_finished_at) : null,
+          scheduleConfirmedAt: insp.schedule_confirmed_at ? String(insp.schedule_confirmed_at) : null,
+          scheduleConfirmedByName: insp.schedule_confirmed_by_name ? String(insp.schedule_confirmed_by_name) : null,
           data: toChecklistObject(parsedData),
           syncStatus: insp.__sync || 'synced'
         };
@@ -209,6 +217,23 @@ export default function ChecklistHistory() {
                   <div>
                     <div className="font-bold text-slate-900">{insp.machine}</div>
                     <div className="text-sm text-slate-500">Data: {insp.dateFormatted}</div>
+                    <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                      {insp.startedAt && (
+                        <span className="rounded-full bg-blue-50 px-2.5 py-1 font-semibold text-blue-700">
+                          Início: {new Date(insp.startedAt).toLocaleString('pt-BR')}
+                        </span>
+                      )}
+                      {insp.finishedAt && (
+                        <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700">
+                          Fim: {new Date(insp.finishedAt).toLocaleString('pt-BR')}
+                        </span>
+                      )}
+                      {insp.scheduleConfirmedAt && (
+                        <span className="rounded-full bg-violet-50 px-2.5 py-1 font-semibold text-violet-700">
+                          Agenda confirmada por {insp.scheduleConfirmedByName || 'PCM'}
+                        </span>
+                      )}
+                    </div>
                     {isAdmin && (
                       <div className="text-xs text-slate-500 mt-1">Operador ID: {insp.operator_id}</div>
                     )}

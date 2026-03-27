@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Activity, AlertCircle, AlertTriangle, Calendar, CheckCircle, CheckCircle2, Timer, TrendingUp } from 'lucide-react';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
-import { getChecklists, getServiceOrders } from '../lib/supabaseApi';
+import { getChecklists, getChecklistSchedules, getServiceOrders } from '../lib/supabaseApi';
 
 interface ServiceOrderSummary {
   id: number;
@@ -16,6 +16,14 @@ interface ChecklistSummary {
   status: 'pending' | 'completed' | string;
   date: string;
   operator_id: number;
+}
+
+interface ChecklistScheduleSummary {
+  machine_id: number;
+  machine_name: string;
+  operator_id: number;
+  scheduled_date: string;
+  status: 'draft' | 'confirmed' | 'completed' | 'cancelled' | string;
 }
 
 function toSafeDate(value: unknown): Date {
@@ -52,6 +60,7 @@ export default function ControlPanel() {
   const isAdmin = String(user?.role || '').trim().toLowerCase() === 'admin';
   const [orders, setOrders] = useState<ServiceOrderSummary[]>([]);
   const [checklists, setChecklists] = useState<ChecklistSummary[]>([]);
+  const [schedules, setSchedules] = useState<ChecklistScheduleSummary[]>([]);
   const [historyRange, setHistoryRange] = useState<HistoryRange>(30);
   const [hoveredHistoryPoint, setHoveredHistoryPoint] = useState<HoveredHistoryPoint | null>(null);
   const [isHistoryTooltipPinned, setIsHistoryTooltipPinned] = useState(false);
@@ -85,12 +94,24 @@ export default function ControlPanel() {
   useEffect(() => {
     const loadChecklistSummary = async () => {
       try {
-        const data = await getChecklists();
+        const [data, scheduleRows] = await Promise.all([
+          getChecklists(),
+          getChecklistSchedules({ operatorId: isAdmin ? undefined : user?.id, includePast: true }),
+        ]);
         setChecklists(
           (data || []).map((item: any) => ({
             status: String(item.status || 'pending'),
             date: String(item.date || item.created_at || new Date().toISOString()),
             operator_id: Number(item.operator_id || 0),
+          }))
+        );
+        setSchedules(
+          (scheduleRows || []).map((item: any) => ({
+            machine_id: Number(item.machine_id || 0),
+            machine_name: String(item.machine_name || 'Máquina'),
+            operator_id: Number(item.operator_id || 0),
+            scheduled_date: String(item.scheduled_date || new Date().toISOString().slice(0, 10)),
+            status: String(item.status || 'draft'),
           }))
         );
       } catch (err) {
@@ -104,7 +125,7 @@ export default function ControlPanel() {
     }, 90000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [isAdmin, user?.id]);
 
   const visibleOrders = useMemo(() => {
     if (!user) return [];
@@ -274,6 +295,48 @@ export default function ControlPanel() {
       completionRate,
     };
   }, [checklists, isAdmin, user?.id]);
+
+  const scheduleKpis = useMemo(() => {
+    const visible = isAdmin
+      ? schedules
+      : schedules.filter((entry) => entry.operator_id === user?.id);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const activePlan = visible.filter((entry) => ['confirmed', 'completed'].includes(entry.status));
+    const duePlan = activePlan.filter((entry) => {
+      const scheduled = new Date(`${entry.scheduled_date}T00:00:00`).getTime();
+      return Number.isFinite(scheduled) && scheduled <= today.getTime();
+    });
+
+    const overdue = duePlan.filter((entry) => entry.status === 'confirmed').length;
+    const completed = activePlan.filter((entry) => entry.status === 'completed').length;
+    const drafts = visible.filter((entry) => entry.status === 'draft').length;
+    const adherenceRate = duePlan.length > 0
+      ? (duePlan.filter((entry) => entry.status === 'completed').length / duePlan.length) * 100
+      : 0;
+
+    const criticalMachinesMap = new Map<string, number>();
+    visible
+      .filter((entry) => entry.status === 'confirmed')
+      .forEach((entry) => {
+        const key = entry.machine_name;
+        criticalMachinesMap.set(key, (criticalMachinesMap.get(key) || 0) + 1);
+      });
+
+    const criticalMachines = Array.from(criticalMachinesMap.entries())
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 3);
+
+    return {
+      drafts,
+      overdue,
+      completed,
+      adherenceRate,
+      criticalMachines,
+    };
+  }, [schedules, isAdmin, user?.id]);
 
   return (
     <Layout>
@@ -549,6 +612,63 @@ export default function ControlPanel() {
           </div>
           <p className="text-3xl font-bold text-slate-900">{checklistKpis.completionRate.toFixed(0)}%</p>
         </div>
+      </div>
+
+      <div className="mb-8">
+        <h3 className="text-xl font-bold text-slate-900">Planejamento Preventivo</h3>
+        <p className="text-slate-500">Controle de confirmação PCM, atrasos e aderência da execução preventiva.</p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-7">
+        <div className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-medium text-slate-600">Rascunhos PCM</p>
+            <Calendar size={18} className="text-amber-600" />
+          </div>
+          <p className="text-3xl font-bold text-slate-900">{scheduleKpis.drafts}</p>
+        </div>
+
+        <div className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-medium text-slate-600">Preventivas atrasadas</p>
+            <AlertTriangle size={18} className="text-red-600" />
+          </div>
+          <p className="text-3xl font-bold text-slate-900">{scheduleKpis.overdue}</p>
+        </div>
+
+        <div className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-medium text-slate-600">Planos concluídos</p>
+            <CheckCircle size={18} className="text-emerald-600" />
+          </div>
+          <p className="text-3xl font-bold text-slate-900">{scheduleKpis.completed}</p>
+        </div>
+
+        <div className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-medium text-slate-600">Aderência ao plano</p>
+            <TrendingUp size={18} className="text-blue-600" />
+          </div>
+          <p className="text-3xl font-bold text-slate-900">{scheduleKpis.adherenceRate.toFixed(0)}%</p>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm mb-8">
+        <h4 className="text-lg font-bold text-slate-900 mb-3">Máquinas críticas na preventiva</h4>
+        {scheduleKpis.criticalMachines.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {scheduleKpis.criticalMachines.map(([machineName, count]) => (
+              <div key={machineName} className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                <p className="text-sm font-semibold text-slate-900">{machineName}</p>
+                <p className="text-xs text-slate-500 mt-1">Pendências confirmadas: {count}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+            Nenhuma máquina crítica identificada no plano preventivo atual.
+          </div>
+        )}
       </div>
     </Layout>
   );

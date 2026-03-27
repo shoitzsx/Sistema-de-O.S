@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 import { motion } from 'motion/react';
-import { getUsers, loginUser } from '../lib/supabaseApi';
+import { getLoginDirectory, loginUser } from '../lib/supabaseApi';
 import { LoginNumeric } from '../components/LoginNumeric';
 import brandLogo from '../assets/logo-ui.png';
 
@@ -29,13 +29,22 @@ export default function Login() {
 
   const loadUsers = async () => {
     try {
-      const data = await getUsers();
-      setUsers((data || []).map((user) => ({
-        id: user.id,
-        name: user.name,
-        username: user.username,
-        role: user.role,
-      })));
+      const data = await getLoginDirectory();
+      const sortedUsers = (data || [])
+        .map((user) => ({
+          id: user.id,
+          name: user.name,
+          username: user.username,
+          role: user.role,
+        }))
+        .sort((a, b) => {
+          // Coloca admins primeiro
+          if (a.role === 'admin' && b.role !== 'admin') return -1;
+          if (a.role !== 'admin' && b.role === 'admin') return 1;
+          // Mantém ordem alfabética dentro de cada grupo
+          return a.name.localeCompare(b.name);
+        });
+      setUsers(sortedUsers);
     } catch (err) {
       console.error('Erro ao carregar usuários:', err);
       setError('Não foi possível carregar usuários.');
@@ -52,7 +61,7 @@ export default function Login() {
       const data = await loginUser(selectedUser.username, passwordValue);
 
       if (!data) {
-        setError('Senha incorreta');
+        setError('Credenciais inválidas ou sessão indisponível');
         setIsLoading(false);
         return;
       }

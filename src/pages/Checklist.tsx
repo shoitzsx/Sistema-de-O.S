@@ -1619,8 +1619,8 @@ export default function Checklist() {
       )}
 
       {isTemplateModalOpen && (
-        <div className="fixed inset-0 z-[60] bg-slate-900/80 backdrop-blur-md flex items-start sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
-          <div className="bg-white w-full max-w-5xl sm:rounded-3xl shadow-2xl border border-slate-200 min-h-screen sm:min-h-0 sm:max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 z-[60] bg-slate-900/80 backdrop-blur-md flex items-start md:items-center justify-center p-0 md:p-4 overflow-y-auto">
+          <div className="bg-white w-full max-w-6xl md:rounded-3xl shadow-2xl border border-slate-200 min-h-screen md:min-h-0 md:max-h-[90vh] flex flex-col">
             <div className="sticky top-0 z-20 px-4 sm:px-8 py-5 sm:py-6 border-b border-slate-100 bg-white/95 backdrop-blur-sm flex items-center justify-between">
               <div>
                 <h3 className="text-xl sm:text-2xl font-black text-slate-900 leading-tight">Configuração de Inspeção</h3>
@@ -1629,14 +1629,14 @@ export default function Checklist() {
               <button 
                 onClick={closeTemplateModal} 
                 className="w-12 h-12 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all active:scale-90"
-                aria-label="Fachar"
+                aria-label="Fechar"
               >
                 <XCircle size={32} />
               </button>
             </div>
 
-            <div className="p-4 sm:p-8 grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 flex-1 overflow-y-auto">
-              <div className="space-y-8">
+            <div className="p-4 sm:p-6 lg:p-8 grid grid-cols-1 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-6 lg:gap-10 flex-1 overflow-y-auto">
+              <div className="space-y-6 lg:space-y-8 md:min-w-0">
                 <div className="bg-white p-1 rounded-lg">
                   <label className="block text-sm font-bold text-slate-700 mb-2.5 uppercase tracking-wide">Modelo da máquina</label>
                   {!isNewModelMode ? (
@@ -1695,12 +1695,12 @@ export default function Checklist() {
                 </div>
               </div>
 
-              <div className="flex flex-col mt-4 lg:mt-0">
-                <h4 className="font-black text-slate-800 mb-5 flex items-center justify-center lg:justify-start gap-3 uppercase tracking-wider text-sm">
+              <div className="flex flex-col md:min-w-0">
+                <h4 className="font-black text-slate-800 mb-5 flex items-center justify-center md:justify-start gap-3 uppercase tracking-wider text-sm">
                   <div className="w-2 h-7 bg-emerald-500 rounded-full"></div>
                   Estrutura da Inspeção
                 </h4>
-                <div className="space-y-6 pb-8">
+                <div className="space-y-5 pb-8 md:pr-1">
                   {templateItems.length === 0 && (
                     <div className="text-sm text-slate-500 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl p-8 text-center">
                       <p>Nenhuma categoria adicionada ainda.</p>
@@ -1708,7 +1708,7 @@ export default function Checklist() {
                     </div>
                   )}
                   {templateItems.map((cat, categoryIndex) => (
-                    <div key={`${cat.category}-${categoryIndex}`} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:border-slate-300 transition-colors group">
+                    <div key={`${cat.category}-${categoryIndex}`} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:border-slate-300 transition-colors group md:min-w-0">
                       <div className="flex items-center justify-between gap-3 mb-4">
                         <div className="flex-1">
                           <input
@@ -1754,7 +1754,7 @@ export default function Checklist() {
                             }
                           }}
                           placeholder="Adicionar item..."
-                          className="flex-1 p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-emerald-500 outline-none transition-all"
+                          className="min-w-0 flex-1 p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-emerald-500 outline-none transition-all"
                         />
                         <button
                           onClick={() => addItemToCategory(categoryIndex)}

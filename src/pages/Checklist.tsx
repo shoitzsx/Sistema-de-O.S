@@ -1695,11 +1695,13 @@ export default function Checklist() {
                 </div>
               </div>
 
-              <div className="flex flex-col md:min-w-0">
-                <h4 className="font-black text-slate-800 mb-5 flex items-center justify-center md:justify-start gap-3 uppercase tracking-wider text-sm">
-                  <div className="w-2 h-7 bg-emerald-500 rounded-full"></div>
-                  Estrutura da Inspeção
-                </h4>
+              <div className="flex flex-col md:min-w-0 pt-1">
+                <div className="relative z-10 mb-5 rounded-2xl bg-white/95 px-2 py-1.5 md:px-0 md:py-0">
+                  <h4 className="font-black text-slate-800 flex items-center justify-center md:justify-start gap-3 uppercase tracking-wider text-sm">
+                    <div className="w-2 h-7 bg-emerald-500 rounded-full"></div>
+                    Estrutura da Inspeção
+                  </h4>
+                </div>
                 <div className="space-y-5 pb-8 md:pr-1">
                   {templateItems.length === 0 && (
                     <div className="text-sm text-slate-500 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl p-8 text-center">

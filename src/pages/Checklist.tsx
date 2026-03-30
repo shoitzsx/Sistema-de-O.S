@@ -4,7 +4,7 @@ import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import Layout from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
-import { CheckCircle, XCircle, MinusCircle, ChevronRight, Save, Calendar, ChevronDown, ChevronUp, AlertCircle, Plus, Trash2, Settings, Monitor, Minimize2 } from 'lucide-react';
+import { CheckCircle, XCircle, MinusCircle, ChevronRight, ChevronLeft, Save, Calendar, ChevronDown, ChevronUp, AlertCircle, Plus, Trash2, Settings, Monitor, Minimize2 } from 'lucide-react';
 import clsx from 'clsx';
 import {
   getMachines,
@@ -1635,138 +1635,143 @@ export default function Checklist() {
               </button>
             </div>
 
-            <div className="p-4 sm:p-6 lg:p-8 grid grid-cols-1 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-6 lg:gap-10 flex-1 overflow-y-auto">
-              <div className="space-y-6 lg:space-y-8 md:min-w-0">
-                <div className="bg-white p-1 rounded-lg">
-                  <label className="block text-sm font-bold text-slate-700 mb-2.5 uppercase tracking-wide">Modelo da máquina</label>
-                  {!isNewModelMode ? (
-                    <div className="flex flex-col sm:flex-row gap-3">
-                      <select
-                        value={editingModel || ''}
-                        onChange={(e) => setEditingModel(e.target.value || null)}
-                        className="flex-1 p-4 sm:p-3 rounded-xl border-2 border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none bg-white text-slate-900 shadow-sm text-base"
-                      >
-                        <option value="">Selecione um modelo</option>
-                        {availableModels.map(model => (
-                          <option key={model} value={model}>{model}</option>
-                        ))}
-                      </select>
-                      <button
-                        onClick={() => setIsNewModelMode(true)}
-                        className="sm:px-8 py-4 sm:py-3 rounded-xl border-2 border-slate-300 font-black text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition-all shadow-sm flex items-center justify-center gap-2"
-                      >
-                        <Plus size={20} className="sm:hidden" /> NOVO MODELO
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col sm:flex-row gap-3">
-                      <input
-                        value={newModelName}
-                        onChange={(e) => setNewModelName(e.target.value)}
-                        placeholder="Ex: BH180"
-                        className="flex-1 p-4 sm:p-3 rounded-xl border-2 border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none bg-white text-slate-900 shadow-sm text-base"
-                      />
-                      <button
-                        onClick={() => setIsNewModelMode(false)}
-                        className="sm:px-8 py-4 sm:py-3 rounded-xl border-2 border-slate-300 font-black text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition-all shadow-sm flex items-center justify-center gap-2"
-                      >
-                        VOLTAR
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <div className="border-2 border-emerald-100 rounded-3xl p-5 sm:p-6 bg-emerald-50/20 shadow-inner">
-                  <label className="block text-xs font-black text-emerald-800 mb-4 uppercase tracking-[0.2em] text-center sm:text-left">Nova categoria de inspeção</label>
-                  <div className="flex flex-col gap-3">
-                    <input
-                      value={newCategoryName}
-                      onChange={(e) => setNewCategoryName(e.target.value)}
-                      placeholder="Ex: Sistema Hidráulico"
-                      className="w-full p-4 sm:p-3.5 rounded-2xl border-2 border-emerald-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none bg-white shadow-sm text-lg"
-                    />
-                    <button
-                      onClick={addCategory}
-                      className="w-full py-4.5 sm:py-4 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 active:scale-[0.98] text-white rounded-2xl font-black text-lg flex items-center justify-center gap-3 shadow-xl shadow-emerald-600/30 transition-all uppercase tracking-widest"
-                    >
-                      <Plus size={24} /> Adicionar Categoria
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col md:min-w-0 pt-1">
-                <div className="relative z-10 mb-5 rounded-2xl bg-white/95 px-2 py-1.5 md:px-0 md:py-0">
-                  <h4 className="font-black text-slate-800 flex items-center justify-center md:justify-start gap-3 uppercase tracking-wider text-sm">
-                    <div className="w-2 h-7 bg-emerald-500 rounded-full"></div>
-                    Estrutura da Inspeção
-                  </h4>
-                </div>
-                <div className="space-y-5 pb-8 md:pr-1">
-                  {templateItems.length === 0 && (
-                    <div className="text-sm text-slate-500 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl p-8 text-center">
-                      <p>Nenhuma categoria adicionada ainda.</p>
-                      <p className="mt-1 text-xs">Crie uma categoria acima para começar.</p>
-                    </div>
-                  )}
-                  {templateItems.map((cat, categoryIndex) => (
-                    <div key={`${cat.category}-${categoryIndex}`} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:border-slate-300 transition-colors group md:min-w-0">
-                      <div className="flex items-center justify-between gap-3 mb-4">
-                        <div className="flex-1">
-                          <input
-                            value={cat.category}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              setTemplateItems(prev => prev.map((c, i) => i === categoryIndex ? { ...c, category: value } : c));
-                            }}
-                            className="font-bold text-slate-800 bg-transparent border-b-2 border-dashed border-slate-200 focus:border-emerald-400 focus:outline-none w-full py-1 text-lg"
-                            placeholder="Nome da categoria"
-                          />
+            <div className="p-4 sm:p-6 lg:p-8 flex-1 overflow-y-auto">
+              <div className="grid grid-cols-1 md:grid-cols-[minmax(300px,380px)_minmax(0,1fr)] gap-6 lg:gap-8 items-start">
+                <div className="min-w-0" data-testid="checklist-template-left-panel">
+                  <div className="border-2 border-emerald-100 rounded-3xl p-5 sm:p-6 bg-emerald-50/20 shadow-inner space-y-6">
+                    <div>
+                      <label className="block text-sm font-bold text-slate-700 mb-2.5 uppercase tracking-wide">Modelo da máquina</label>
+                      {!isNewModelMode ? (
+                        <div className="flex flex-col gap-3">
+                          <select
+                            value={editingModel || ''}
+                            onChange={(e) => setEditingModel(e.target.value || null)}
+                            className="w-full p-4 sm:p-3 rounded-2xl border-2 border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none bg-white text-slate-900 shadow-sm text-base"
+                          >
+                            <option value="">Selecione um modelo</option>
+                            {availableModels.map(model => (
+                              <option key={model} value={model}>{model}</option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={() => setIsNewModelMode(true)}
+                            className="w-full px-6 py-4 sm:py-3 rounded-2xl border-2 border-slate-300 font-black text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition-all shadow-sm flex items-center justify-center gap-2 uppercase tracking-wide"
+                          >
+                            <Plus size={20} /> Novo Modelo
+                          </button>
                         </div>
-                        <button 
-                          onClick={() => removeCategory(categoryIndex)} 
-                          className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                          title="Remover Categoria"
-                        >
-                          <Trash2 size={20} />
-                        </button>
-                      </div>
+                      ) : (
+                        <div className="flex flex-col gap-3">
+                          <input
+                            value={newModelName}
+                            onChange={(e) => setNewModelName(e.target.value)}
+                            placeholder="Ex: BH180"
+                            className="w-full p-4 sm:p-3 rounded-2xl border-2 border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none bg-white text-slate-900 shadow-sm text-base"
+                          />
+                          <button
+                            onClick={() => setIsNewModelMode(false)}
+                            className="w-full px-6 py-4 sm:py-3 rounded-2xl border-2 border-slate-300 font-black text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition-all shadow-sm flex items-center justify-center gap-2 uppercase tracking-wide"
+                          >
+                            Voltar
+                          </button>
+                        </div>
+                      )}
+                    </div>
 
-                      <div className="space-y-2 mb-4">
-                        {cat.items.map((item, itemIndex) => (
-                          <div key={`${item}-${itemIndex}`} className="flex items-center justify-between text-sm bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 group/item hover:bg-slate-100 transition-colors">
-                            <span className="text-slate-700 font-medium">{item}</span>
-                            <button
-                              onClick={() => removeItemFromCategory(categoryIndex, itemIndex)}
-                              className="text-slate-400 hover:text-red-500 p-1 opacity-0 group-hover/item:opacity-100 transition-opacity"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="flex gap-2">
+                    <div className="border-t border-emerald-100 pt-6">
+                      <label className="block text-xs font-black text-emerald-800 mb-4 uppercase tracking-[0.2em] text-center sm:text-left">Nova categoria de inspeção</label>
+                      <div className="flex flex-col gap-3">
                         <input
-                          value={newItemByCategory[categoryIndex] || ''}
-                          onChange={(e) => setNewItemByCategory(prev => ({ ...prev, [categoryIndex]: e.target.value }))}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && (newItemByCategory[categoryIndex] || '').trim()) {
-                              addItemToCategory(categoryIndex);
-                            }
-                          }}
-                          placeholder="Adicionar item..."
-                          className="min-w-0 flex-1 p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-emerald-500 outline-none transition-all"
+                          value={newCategoryName}
+                          onChange={(e) => setNewCategoryName(e.target.value)}
+                          placeholder="Ex: Sistema Hidráulico"
+                          className="w-full p-4 sm:p-3.5 rounded-2xl border-2 border-emerald-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none bg-white shadow-sm text-lg"
                         />
                         <button
-                          onClick={() => addItemToCategory(categoryIndex)}
-                          className="w-12 h-12 flex items-center justify-center bg-slate-800 hover:bg-slate-900 text-white rounded-xl shadow-md transition-all active:scale-95"
+                          onClick={addCategory}
+                          className="w-full py-4.5 sm:py-4 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 active:scale-[0.98] text-white rounded-2xl font-black text-lg flex items-center justify-center gap-3 shadow-xl shadow-emerald-600/30 transition-all uppercase tracking-widest"
                         >
-                          <Plus size={20} />
+                          <Plus size={24} /> Adicionar Categoria
                         </button>
                       </div>
                     </div>
-                  ))}
+                  </div>
+                </div>
+
+                <div className="min-w-0" data-testid="checklist-template-right-panel">
+                  <div className="rounded-3xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm">
+                    <h4 data-testid="checklist-template-structure-title" className="mb-5 font-black text-slate-800 flex items-center justify-center md:justify-start gap-3 uppercase tracking-wider text-sm">
+                      <div className="w-2 h-7 bg-emerald-500 rounded-full"></div>
+                      Estrutura da Inspeção
+                    </h4>
+
+                    <div data-testid="checklist-template-structure-content" className="space-y-5 pb-2 min-w-0">
+                      {templateItems.length === 0 && (
+                        <div className="text-sm text-slate-500 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl p-8 text-center min-h-[180px] flex flex-col items-center justify-center">
+                          <p>Nenhuma categoria adicionada ainda.</p>
+                          <p className="mt-1 text-xs">Crie uma categoria acima para começar.</p>
+                        </div>
+                      )}
+                      {templateItems.map((cat, categoryIndex) => (
+                        <div key={`${cat.category}-${categoryIndex}`} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:border-slate-300 transition-colors group min-w-0">
+                          <div className="flex items-center justify-between gap-3 mb-4">
+                            <div className="flex-1 min-w-0">
+                              <input
+                                value={cat.category}
+                                onChange={(e) => {
+                                  const value = e.target.value;
+                                  setTemplateItems(prev => prev.map((c, i) => i === categoryIndex ? { ...c, category: value } : c));
+                                }}
+                                className="font-bold text-slate-800 bg-transparent border-b-2 border-dashed border-slate-200 focus:border-emerald-400 focus:outline-none w-full py-1 text-lg"
+                                placeholder="Nome da categoria"
+                              />
+                            </div>
+                            <button 
+                              onClick={() => removeCategory(categoryIndex)} 
+                              className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                              title="Remover Categoria"
+                            >
+                              <Trash2 size={20} />
+                            </button>
+                          </div>
+
+                          <div className="space-y-2 mb-4">
+                            {cat.items.map((item, itemIndex) => (
+                              <div key={`${item}-${itemIndex}`} className="flex items-center justify-between gap-3 text-sm bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 group/item hover:bg-slate-100 transition-colors">
+                                <span className="min-w-0 flex-1 text-slate-700 font-medium break-words">{item}</span>
+                                <button
+                                  onClick={() => removeItemFromCategory(categoryIndex, itemIndex)}
+                                  className="shrink-0 text-slate-400 hover:text-red-500 p-1 opacity-100 md:opacity-0 group-hover/item:opacity-100 transition-opacity"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="flex gap-2">
+                            <input
+                              value={newItemByCategory[categoryIndex] || ''}
+                              onChange={(e) => setNewItemByCategory(prev => ({ ...prev, [categoryIndex]: e.target.value }))}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && (newItemByCategory[categoryIndex] || '').trim()) {
+                                  addItemToCategory(categoryIndex);
+                                }
+                              }}
+                              placeholder="Adicionar item..."
+                              className="min-w-0 flex-1 p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-emerald-500 outline-none transition-all"
+                            />
+                            <button
+                              onClick={() => addItemToCategory(categoryIndex)}
+                              className="w-12 h-12 shrink-0 flex items-center justify-center bg-slate-800 hover:bg-slate-900 text-white rounded-xl shadow-md transition-all active:scale-95"
+                            >
+                              <Plus size={20} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

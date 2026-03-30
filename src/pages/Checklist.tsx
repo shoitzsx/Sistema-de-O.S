@@ -1619,32 +1619,32 @@ export default function Checklist() {
       )}
 
       {isTemplateModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-start sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
-          <div className="bg-white w-full max-w-4xl sm:rounded-2xl shadow-2xl border border-slate-200 min-h-screen sm:min-h-0 flex flex-col">
-            <div className="sticky top-0 z-10 px-4 sm:px-6 py-4 sm:py-5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+        <div className="fixed inset-0 z-[60] bg-slate-900/80 backdrop-blur-md flex items-start sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
+          <div className="bg-white w-full max-w-5xl sm:rounded-3xl shadow-2xl border border-slate-200 min-h-screen sm:min-h-0 sm:max-h-[90vh] flex flex-col">
+            <div className="sticky top-0 z-20 px-4 sm:px-8 py-5 sm:py-6 border-b border-slate-100 bg-white/95 backdrop-blur-sm flex items-center justify-between">
               <div>
-                <h3 className="text-lg sm:text-xl font-bold text-slate-900 leading-tight">Cadastro de Inspeção</h3>
-                <p className="text-xs sm:text-sm text-slate-500">Configure um template por modelo de equipamento</p>
+                <h3 className="text-xl sm:text-2xl font-black text-slate-900 leading-tight">Configuração de Inspeção</h3>
+                <p className="text-xs sm:text-sm font-medium text-slate-500 uppercase tracking-wide mt-1">Template por modelo de equipamento</p>
               </div>
               <button 
                 onClick={closeTemplateModal} 
-                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200/50 rounded-full transition-colors"
-                aria-label="Fechar"
+                className="w-12 h-12 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all active:scale-90"
+                aria-label="Fachar"
               >
-                <XCircle size={24} />
+                <XCircle size={32} />
               </button>
             </div>
 
-            <div className="p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 overflow-y-auto max-h-none sm:max-h-[75vh]">
-              <div className="space-y-6">
+            <div className="p-4 sm:p-8 grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 flex-1 overflow-y-auto">
+              <div className="space-y-8">
                 <div className="bg-white p-1 rounded-lg">
-                  <label className="block text-sm font-semibold text-slate-700 mb-2.5">Modelo da máquina</label>
+                  <label className="block text-sm font-bold text-slate-700 mb-2.5 uppercase tracking-wide">Modelo da máquina</label>
                   {!isNewModelMode ? (
-                    <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="flex flex-col sm:flex-row gap-3">
                       <select
                         value={editingModel || ''}
                         onChange={(e) => setEditingModel(e.target.value || null)}
-                        className="flex-1 p-3.5 sm:p-3 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none bg-white text-slate-900 shadow-sm"
+                        className="flex-1 p-4 sm:p-3 rounded-xl border-2 border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none bg-white text-slate-900 shadow-sm text-base"
                       >
                         <option value="">Selecione um modelo</option>
                         {availableModels.map(model => (
@@ -1653,54 +1653,54 @@ export default function Checklist() {
                       </select>
                       <button
                         onClick={() => setIsNewModelMode(true)}
-                        className="sm:px-6 py-3 rounded-xl border-2 border-slate-200 font-bold text-slate-600 hover:bg-slate-50 active:bg-slate-100 transition-colors shadow-sm"
+                        className="sm:px-8 py-4 sm:py-3 rounded-xl border-2 border-slate-300 font-black text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition-all shadow-sm flex items-center justify-center gap-2"
                       >
-                        Novo
+                        <Plus size={20} className="sm:hidden" /> NOVO MODELO
                       </button>
                     </div>
                   ) : (
-                    <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="flex flex-col sm:flex-row gap-3">
                       <input
                         value={newModelName}
                         onChange={(e) => setNewModelName(e.target.value)}
                         placeholder="Ex: BH180"
-                        className="flex-1 p-3.5 sm:p-3 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none bg-white text-slate-900 shadow-sm"
+                        className="flex-1 p-4 sm:p-3 rounded-xl border-2 border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none bg-white text-slate-900 shadow-sm text-base"
                       />
                       <button
                         onClick={() => setIsNewModelMode(false)}
-                        className="sm:px-6 py-3 rounded-xl border-2 border-slate-200 font-bold text-slate-600 hover:bg-slate-50 active:bg-slate-100 transition-colors"
+                        className="sm:px-8 py-4 sm:py-3 rounded-xl border-2 border-slate-300 font-black text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition-all shadow-sm flex items-center justify-center gap-2"
                       >
-                        Voltar
+                        VOLTAR
                       </button>
                     </div>
                   )}
                 </div>
 
-                <div className="border border-emerald-100 rounded-2xl p-4 sm:p-5 bg-emerald-50/30">
-                  <label className="block text-sm font-bold text-emerald-900 mb-3 uppercase tracking-wider">Nova categoria</label>
-                  <div className="flex flex-col sm:flex-row gap-2">
+                <div className="border-2 border-emerald-100 rounded-3xl p-5 sm:p-6 bg-emerald-50/20 shadow-inner">
+                  <label className="block text-xs font-black text-emerald-800 mb-4 uppercase tracking-[0.2em] text-center sm:text-left">Nova categoria de inspeção</label>
+                  <div className="flex flex-col gap-3">
                     <input
                       value={newCategoryName}
                       onChange={(e) => setNewCategoryName(e.target.value)}
                       placeholder="Ex: Sistema Hidráulico"
-                      className="flex-1 p-3.5 sm:p-3 rounded-xl border border-emerald-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none bg-white shadow-sm"
+                      className="w-full p-4 sm:p-3.5 rounded-2xl border-2 border-emerald-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none bg-white shadow-sm text-lg"
                     />
                     <button
                       onClick={addCategory}
-                      className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 transition-all"
+                      className="w-full py-4.5 sm:py-4 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 active:scale-[0.98] text-white rounded-2xl font-black text-lg flex items-center justify-center gap-3 shadow-xl shadow-emerald-600/30 transition-all uppercase tracking-widest"
                     >
-                      <Plus size={20} /> Adicionar
+                      <Plus size={24} /> Adicionar Categoria
                     </button>
                   </div>
                 </div>
               </div>
 
-              <div className="flex flex-col">
-                <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                  <div className="w-1.5 h-6 bg-emerald-500 rounded-full"></div>
-                  Categorias e Itens
+              <div className="flex flex-col mt-4 lg:mt-0">
+                <h4 className="font-black text-slate-800 mb-5 flex items-center justify-center lg:justify-start gap-3 uppercase tracking-wider text-sm">
+                  <div className="w-2 h-7 bg-emerald-500 rounded-full"></div>
+                  Estrutura da Inspeção
                 </h4>
-                <div className="space-y-4 pb-4">
+                <div className="space-y-6 pb-8">
                   {templateItems.length === 0 && (
                     <div className="text-sm text-slate-500 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl p-8 text-center">
                       <p>Nenhuma categoria adicionada ainda.</p>

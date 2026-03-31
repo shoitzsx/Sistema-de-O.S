@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { X, Download, Clock3, ShieldCheck, FileClock, Wrench, Printer } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import html2pdf from 'html2pdf.js';
+import { toCanvas } from 'html-to-image';
+import { jsPDF } from 'jspdf';
+import { toast } from 'react-toastify';
 import { getLocalAuditLogs, isRemoteAuditEnabled } from '../lib/audit';
 import { supabase } from '../lib/supabase';
 
@@ -159,6 +161,145 @@ function sumLiveBreakMs(state?: {
   return Math.max(0, Number(state.totalMs || 0) + activeMs);
 }
 
+const PRINT_DOCUMENT_EXTRA_STYLES = `
+  :root {
+    color-scheme: light;
+  }
+
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    background: #ffffff;
+  }
+
+  body {
+    min-height: 100vh;
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .service-order-print-stage {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    padding: 0;
+    background: #ffffff;
+  }
+
+  .service-order-print-sheet {
+    width: 210mm !important;
+    min-height: 297mm !important;
+    margin: 0 auto !important;
+  }
+
+  @page {
+    size: A4;
+    margin: 0;
+  }
+
+  @media print {
+    html,
+    body {
+      background: #ffffff !important;
+    }
+
+    .service-order-print-stage {
+      padding: 0 !important;
+      background: #ffffff !important;
+    }
+
+    .service-order-print-sheet {
+      box-shadow: none !important;
+    }
+  }
+`;
+
+function clonePrintableSheet(source: HTMLDivElement): HTMLDivElement {
+  const clone = source.cloneNode(true) as HTMLDivElement;
+  clone.style.width = '210mm';
+  clone.style.minHeight = '297mm';
+  clone.style.margin = '0 auto';
+  return clone;
+}
+
+function getPrintableHeadMarkup(): string {
+  if (typeof document === 'undefined') return '';
+
+  const styleNodes = Array.from(document.head.querySelectorAll('style, link[rel="stylesheet"]'));
+  return styleNodes.map((node) => node.outerHTML).join('\n');
+}
+
+function buildPrintableDocumentMarkup(sheetMarkup: string): string {
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Ordem de Serviço</title>
+    ${getPrintableHeadMarkup()}
+    <style>${PRINT_DOCUMENT_EXTRA_STYLES}</style>
+  </head>
+  <body>
+    <div class="service-order-print-stage">
+      ${sheetMarkup}
+    </div>
+  </body>
+</html>`;
+}
+
+function waitForImages(root: ParentNode): Promise<void> {
+  const images = Array.from(root.querySelectorAll('img'));
+
+  if (images.length === 0) {
+    return Promise.resolve();
+  }
+
+  return Promise.all(
+    images.map(
+      (image) =>
+        new Promise<void>((resolve) => {
+          if (image.complete) {
+            resolve();
+            return;
+          }
+
+          const complete = () => resolve();
+          image.addEventListener('load', complete, { once: true });
+          image.addEventListener('error', complete, { once: true });
+        })
+    )
+  ).then(() => undefined);
+}
+
+async function waitForFonts(targetDocument: Document): Promise<void> {
+  const fontSet = (targetDocument as Document & { fonts?: { ready?: Promise<unknown> } }).fonts;
+  if (!fontSet?.ready) return;
+
+  try {
+    await fontSet.ready;
+  } catch {
+    // continue without blocking export/print when fonts API is unavailable
+  }
+}
+
+function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export default function ServiceOrderViewer({ 
   order, 
   isOpen, 
@@ -170,6 +311,8 @@ export default function ServiceOrderViewer({
 }: ServiceOrderViewerProps) {
   const documentRef = useRef<HTMLDivElement>(null);
   const [closedBreakSummary, setClosedBreakSummary] = useState<ClosedBreakSummary | null>(null);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
   const liveBreakTotalMs = useMemo(() => sumLiveBreakMs(currentBreakState), [currentBreakState]);
 
   useEffect(() => {
@@ -229,24 +372,128 @@ export default function ServiceOrderViewer({
 
   if (!order) return null;
 
-  const handleExportPDF = () => {
-    if (!documentRef.current) return;
+  const handleExportPDF = async () => {
+    if (!documentRef.current || isExportingPdf) return;
 
-    const element = documentRef.current;
-    const opt = {
-      margin: [0, 0, 0, 0] as [number, number, number, number],
-      filename: `OS_${order.id.toString().padStart(4, '0')}.pdf`,
-      image: { type: 'png' as const, quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
-    };
+    const filename = `OS_${order.id.toString().padStart(4, '0')}.pdf`;
+    const exportContainer = document.createElement('div');
+    exportContainer.className = 'service-order-print-stage';
+    exportContainer.style.position = 'fixed';
+    exportContainer.style.left = '-10000px';
+    exportContainer.style.top = '0';
+    exportContainer.style.width = '210mm';
+    exportContainer.style.pointerEvents = 'none';
+    exportContainer.style.background = '#ffffff';
 
-    html2pdf().set(opt).from(element).save();
+    const printableSheet = clonePrintableSheet(documentRef.current);
+    exportContainer.appendChild(printableSheet);
+    document.body.appendChild(exportContainer);
+
+    setIsExportingPdf(true);
+
+    try {
+      await waitForImages(exportContainer);
+      await waitForFonts(document);
+
+      const canvas = await toCanvas(printableSheet, {
+        cacheBust: true,
+        backgroundColor: '#ffffff',
+        pixelRatio: 2,
+      });
+
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+        compress: true,
+      });
+
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const imageWidth = pageWidth;
+      const imageHeight = (canvas.height * imageWidth) / canvas.width;
+      const imageData = canvas.toDataURL('image/png', 1);
+
+      let remainingHeight = imageHeight;
+      let position = 0;
+
+      pdf.addImage(imageData, 'PNG', 0, position, imageWidth, imageHeight, undefined, 'FAST');
+      remainingHeight -= pageHeight;
+
+      while (remainingHeight > 0) {
+        position = remainingHeight - imageHeight;
+        pdf.addPage();
+        pdf.addImage(imageData, 'PNG', 0, position, imageWidth, imageHeight, undefined, 'FAST');
+        remainingHeight -= pageHeight;
+      }
+
+      const pdfBlob = pdf.output('blob');
+
+      downloadBlob(pdfBlob, filename);
+    } catch (error) {
+      console.error('Erro ao exportar PDF da O.S.', error);
+      toast.error('Não foi possível exportar o PDF desta ordem de serviço.');
+    } finally {
+      exportContainer.remove();
+      setIsExportingPdf(false);
+    }
   };
 
-  const handlePrint = () => {
-    if (typeof window === 'undefined') return;
-    window.print();
+  const handlePrint = async () => {
+    if (!documentRef.current || isPrinting || typeof window === 'undefined') return;
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+
+    document.body.appendChild(iframe);
+    setIsPrinting(true);
+
+    const cleanup = () => {
+      iframe.remove();
+      setIsPrinting(false);
+    };
+
+    try {
+      const printDocument = iframe.contentDocument;
+      const printWindow = iframe.contentWindow;
+
+      if (!printDocument || !printWindow) {
+        throw new Error('Janela de impressão indisponível.');
+      }
+
+      const printableSheet = clonePrintableSheet(documentRef.current);
+      const markup = buildPrintableDocumentMarkup(printableSheet.outerHTML);
+
+      printDocument.open();
+      printDocument.write(markup);
+      printDocument.close();
+
+      await waitForImages(printDocument);
+      await waitForFonts(printDocument);
+      await new Promise((resolve) => window.setTimeout(resolve, 200));
+
+      const fallbackCleanup = window.setTimeout(cleanup, 15000);
+      printWindow.addEventListener(
+        'afterprint',
+        () => {
+          window.clearTimeout(fallbackCleanup);
+          cleanup();
+        },
+        { once: true }
+      );
+
+      printWindow.focus();
+      printWindow.print();
+    } catch (error) {
+      cleanup();
+      console.error('Erro ao imprimir O.S.', error);
+      toast.error('Não foi possível abrir a impressão desta ordem de serviço.');
+    }
   };
 
   const getMaintenanceTypeLabel = () => {
@@ -343,51 +590,6 @@ export default function ServiceOrderViewer({
           onClick={onClose}
           className="service-order-modal-shell fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4"
         >
-          <style>
-            {`
-              @media print {
-                body {
-                  background: #ffffff !important;
-                }
-
-                .service-order-modal-shell {
-                  position: static !important;
-                  inset: auto !important;
-                  display: block !important;
-                  background: #ffffff !important;
-                  padding: 0 !important;
-                  overflow: visible !important;
-                }
-
-                .service-order-modal-frame {
-                  max-height: none !important;
-                  max-width: none !important;
-                  width: auto !important;
-                  overflow: visible !important;
-                  border-radius: 0 !important;
-                  box-shadow: none !important;
-                  background: #ffffff !important;
-                }
-
-                .service-order-modal-header,
-                .service-order-screen-padding {
-                  display: none !important;
-                }
-
-                .service-order-print-wrap {
-                  padding: 0 !important;
-                  overflow: visible !important;
-                }
-
-                .service-order-print-sheet {
-                  width: 210mm !important;
-                  min-height: 297mm !important;
-                  margin: 0 auto !important;
-                  box-shadow: none !important;
-                }
-              }
-            `}
-          </style>
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -416,19 +618,21 @@ export default function ServiceOrderViewer({
               <div className="flex items-center justify-end gap-2">
                 <button
                   onClick={handlePrint}
+                  disabled={isPrinting}
                   className="flex items-center justify-center gap-2 px-3 py-2 sm:px-4 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl font-medium transition-colors shadow-sm"
                   title="Imprimir documento"
                 >
                   <Printer size={18} />
-                  <span>Imprimir</span>
+                  <span>{isPrinting ? 'Preparando...' : 'Imprimir'}</span>
                 </button>
                 <button
                   onClick={handleExportPDF}
+                  disabled={isExportingPdf}
                   className="flex items-center justify-center gap-2 px-3 py-2 sm:px-4 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-medium transition-colors shadow-sm"
                   title="Exportar para PDF"
                 >
                   <Download size={18} />
-                  <span>Exportar PDF</span>
+                  <span>{isExportingPdf ? 'Gerando PDF...' : 'Exportar PDF'}</span>
                 </button>
                 <button
                   onClick={onClose}

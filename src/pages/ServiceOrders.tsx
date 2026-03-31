@@ -1210,6 +1210,8 @@ export default function ServiceOrders() {
       return;
     }
 
+    const csvSeparator = ';';
+
     const header = [
       'id',
       'máquina',
@@ -1224,13 +1226,21 @@ export default function ServiceOrders() {
       'fim'
     ];
 
-    const escapeCell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const escapeCell = (value: unknown) => {
+      const normalizedValue = String(value ?? '')
+        .replace(/\r\n|\r|\n/g, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+
+      return `"${normalizedValue.replace(/"/g, '""')}"`;
+    };
+
     const rows = filteredOrders.map((order) => [
       order.id,
       order.machine_name,
       order.status,
       order.maintenance_type,
-      order.technician_name,
+      getEffectiveAssignedUserName(order) || order.technician_name || 'N/A',
       order.component,
       order.problem_cause || order.description || '',
       order.service_executed || order.final_report || '',
@@ -1239,7 +1249,11 @@ export default function ServiceOrders() {
       order.end_time || '',
     ]);
 
-    const csv = [header, ...rows].map((line) => line.map(escapeCell).join(';')).join('\n');
+    const csvBody = [header, ...rows]
+      .map((line) => line.map(escapeCell).join(csvSeparator))
+      .join('\r\n');
+
+    const csv = `\uFEFFsep=${csvSeparator}\r\n${csvBody}`;
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');

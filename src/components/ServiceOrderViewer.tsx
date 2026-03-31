@@ -229,11 +229,41 @@ function clonePrintableSheet(source: HTMLDivElement): HTMLDivElement {
   return clone;
 }
 
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 function getPrintableHeadMarkup(): string {
   if (typeof document === 'undefined') return '';
 
-  const styleNodes = Array.from(document.head.querySelectorAll('style, link[rel="stylesheet"]'));
-  return styleNodes.map((node) => node.outerHTML).join('\n');
+  const baseHref = escapeHtmlAttribute(document.baseURI || window.location.href);
+  const stylesheetMarkup = Array.from(document.styleSheets)
+    .map((sheet, index) => {
+      try {
+        const cssText = Array.from(sheet.cssRules)
+          .map((rule) => rule.cssText)
+          .join('\n');
+
+        if (cssText.trim()) {
+          return `<style data-print-sheet="${index}">${cssText}</style>`;
+        }
+      } catch {
+        const ownerNode = sheet.ownerNode;
+        if (ownerNode instanceof Element) {
+          return ownerNode.outerHTML;
+        }
+      }
+
+      return '';
+    })
+    .filter(Boolean)
+    .join('\n');
+
+  return `<base href="${baseHref}" />\n${stylesheetMarkup}`;
 }
 
 function buildPrintableDocumentMarkup(sheetMarkup: string): string {
@@ -286,6 +316,31 @@ async function waitForFonts(targetDocument: Document): Promise<void> {
   } catch {
     // continue without blocking export/print when fonts API is unavailable
   }
+}
+
+function waitForStylesheets(targetDocument: Document): Promise<void> {
+  const links = Array.from(targetDocument.querySelectorAll('link[rel="stylesheet"]'));
+
+  if (links.length === 0) {
+    return Promise.resolve();
+  }
+
+  return Promise.all(
+    links.map(
+      (link) =>
+        new Promise<void>((resolve) => {
+          if ((link as HTMLLinkElement).sheet) {
+            resolve();
+            return;
+          }
+
+          const complete = () => resolve();
+          link.addEventListener('load', complete, { once: true });
+          link.addEventListener('error', complete, { once: true });
+          window.setTimeout(complete, 4000);
+        })
+    )
+  ).then(() => undefined);
 }
 
 function downloadBlob(blob: Blob, filename: string): void {
@@ -473,9 +528,14 @@ export default function ServiceOrderViewer({
       printDocument.write(markup);
       printDocument.close();
 
+      await waitForStylesheets(printDocument);
       await waitForImages(printDocument);
       await waitForFonts(printDocument);
-      await new Promise((resolve) => window.setTimeout(resolve, 200));
+      await new Promise<void>((resolve) => {
+        printWindow.requestAnimationFrame(() => {
+          printWindow.requestAnimationFrame(() => resolve());
+        });
+      });
 
       const fallbackCleanup = window.setTimeout(cleanup, 15000);
       printWindow.addEventListener(

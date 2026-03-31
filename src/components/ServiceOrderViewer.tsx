@@ -170,8 +170,7 @@ export default function ServiceOrderViewer({
 }: ServiceOrderViewerProps) {
   const documentRef = useRef<HTMLDivElement>(null);
   const [closedBreakSummary, setClosedBreakSummary] = useState<ClosedBreakSummary | null>(null);
-
-  if (!order) return null;
+  const liveBreakTotalMs = useMemo(() => sumLiveBreakMs(currentBreakState), [currentBreakState]);
 
   useEffect(() => {
     if (!isOpen || !order) return;
@@ -228,6 +227,8 @@ export default function ServiceOrderViewer({
     };
   }, [isOpen, order]);
 
+  if (!order) return null;
+
   const handleExportPDF = () => {
     if (!documentRef.current) return;
 
@@ -258,7 +259,6 @@ export default function ServiceOrderViewer({
 
   const queueStartedAt = routingMeta?.queueStartedAt || order.created_at || null;
   const workStartedAt = routingMeta?.workStartedAt || order.start_time || null;
-  const liveBreakTotalMs = useMemo(() => sumLiveBreakMs(currentBreakState), [currentBreakState]);
 
   const breakTotalMs = order.status === 'closed'
     ? closedBreakSummary?.breakTotalMs ?? null
